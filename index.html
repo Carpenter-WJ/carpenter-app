@@ -645,7 +645,6 @@ function goTab(tab, btn) {
   btn.classList.add('on');
   const titles={cal:['목수 일지','작업 달력'],work:['작업 기록','현장별 일당'],pay:['입금 관리','현장별 수령 현황'],stat:['통계','월별 분석']};
   document.getElementById('hTit').textContent=titles[tab][0];
-  document.getElementById('hSub').textContent=titles[tab][1];
   const fab=document.getElementById('fab');
   if(tab==='cal')  { renderCal(); fab.style.display='flex'; fab.onclick=()=>openWorkOv(null,null); }
   if(tab==='work') { renderWork(); fab.style.display='flex'; fab.onclick=()=>openWorkOv(null,null); }
