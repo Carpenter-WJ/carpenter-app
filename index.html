@@ -560,6 +560,7 @@ if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
   var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  alert('isMobile: ' + isMobile);
   if (isMobile) {
     firebase.auth().signInWithRedirect(provider).catch(function(e){ alert('오류: ' + e.message); });
   } else {
