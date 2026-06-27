@@ -417,17 +417,6 @@
     <div class="sec-title">이번 달 작업 내역</div>
     <div class="card" id="statWList"></div>
   </div>
-  <div class="sec">
-    <div class="sec-title">데이터 백업 / 복원</div>
-    <div class="card" style="padding:16px">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
-        클라우드에 자동 저장되지만 추가로 파일 백업도 가능합니다.
-      </p>
-      <button class="btn-pri" onclick="exportData()" style="margin-bottom:10px">📥 백업 파일 저장</button>
-      <button class="btn-out" onclick="document.getElementById('importFile').click()">📤 백업 파일로 복원</button>
-      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
-    </div>
-  </div>
 </div>
 
 <!-- FAB -->
