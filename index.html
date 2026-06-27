@@ -195,6 +195,7 @@
       width:100%; padding:13px 14px; border:1.5px solid var(--border);
       border-radius:11px; font-size:16px; font-family:inherit;
       color:var(--text); outline:none; transition:border-color .18s;
+      box-sizing:border-box; -webkit-appearance:none; appearance:none;
     }
     .fg input:focus { border-color:var(--pri); }
 
@@ -921,10 +922,11 @@ function renderWork() {
 function renderPay() {
   const totalExp=DB.works.reduce((s,w)=>s+expAmt(w),0);
   const totalRcv=DB.works.reduce((s,w)=>s+rcvAmt(w.id),0);
+  const totalOutstanding=DB.works.reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
   document.getElementById('balArea').innerHTML=`
     <div class="bal-card">
       <div class="bc-lbl">전체 미수금</div>
-      <div class="bc-amt">${fmtW(Math.max(0,totalExp-totalRcv))}</div>
+      <div class="bc-amt">${fmtW(totalOutstanding)}</div>
       <div class="bc-row">
         <div class="bc-item"><div class="bi-l">총 예상금액</div><div class="bi-v">${fmtW(totalExp)}</div></div>
         <div class="bc-item"><div class="bi-l">수령 완료</div><div class="bi-v">${fmtW(totalRcv)}</div></div>
@@ -996,7 +998,9 @@ function togglePaid() {
 }
 
 function openAddPayOv() {
-  document.getElementById('inPayDate').value=todayStr();
+  const today=todayStr();
+  document.getElementById('inPayDate').value=today;
+  document.getElementById('inPayDate').max=today;
   document.getElementById('inPayAmt').value='';
   document.getElementById('inPayNote').value='';
   openOv('addPayOv');
@@ -1032,16 +1036,17 @@ function renderStat() {
   });
   const workDays=new Set(works.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
-  const allExp=DB.works.reduce((s,w)=>s+expAmt(w),0);
-  const allRcv=DB.works.reduce((s,w)=>s+rcvAmt(w.id),0);
+  const allOutstanding=DB.works.reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+  const avgWage=workDays>0?Math.round(mWage/workDays):0;
 
   document.getElementById('statGrid').innerHTML=`
     <div class="sbox"><div class="sl">작업일수</div><div class="sv">${workDays}일</div></div>
     <div class="sbox"><div class="sl">현장 수</div><div class="sv">${works.length}곳</div></div>
-    <div class="sbox ori"><div class="sl">총 일당</div><div class="sv">${(mWage/10000).toFixed(1)}만</div></div>
+    <div class="sbox ori"><div class="sl">총 임금</div><div class="sv">${(mWage/10000).toFixed(1)}만</div></div>
     <div class="sbox grn"><div class="sl">이번 달 수령</div><div class="sv">${(mPaid/10000).toFixed(1)}만</div></div>
-    <div class="sbox ${allExp-allRcv>0?'red':'grn'}" style="grid-column:1/-1">
-      <div class="sl">전체 미수금</div><div class="sv">${fmtW(allExp-allRcv)}</div>
+    <div class="sbox"><div class="sl">평균 일당</div><div class="sv">${workDays>0?fmtW(avgWage):'—'}</div></div>
+    <div class="sbox ${allOutstanding>0?'red':'grn'}" style="grid-column:1/-1">
+      <div class="sl">전체 미수금</div><div class="sv">${fmtW(allOutstanding)}</div>
     </div>`;
 
   const wl=document.getElementById('statWList');
