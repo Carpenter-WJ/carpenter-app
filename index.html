@@ -571,7 +571,7 @@ function signIn() {
 // ── Firebase 참조 ──
 const auth = firebase.auth();
 const fsdb = firebase.firestore();
-fsdb.enablePersistence().catch(function(){});
+fsdb.enablePersistence({synchronizeTabs:true}).catch(function(){});
 
 let currentUser = null;
 let DB = { works: [], payments: [] };
