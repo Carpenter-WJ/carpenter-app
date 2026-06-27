@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="22" fill="#D35400"/>
+  <!-- 망치 머리 -->
+  <rect x="30" y="22" width="40" height="20" rx="5" fill="white"/>
+  <!-- 망치 손잡이 -->
+  <rect x="46" y="38" width="8" height="38" rx="4" fill="white"/>
+  <!-- 강조선 -->
+  <rect x="30" y="28" width="40" height="6" rx="2" fill="rgba(0,0,0,0.15)"/>
+</svg>
