@@ -890,9 +890,10 @@ function renderWork() {
     const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}).length;
     return s+cnt*Number(w.wage);
   },0);
-  document.getElementById('workSecTitle').textContent=filtered.length>0?`${filtered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}`:'이번 달 작업 기록';
+  const monthLbl=`${workY}년 ${workM+1}월`;
+  document.getElementById('workSecTitle').textContent=filtered.length>0?`${filtered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}`:monthLbl+' 작업 기록';
   const el=document.getElementById('wList');
-  if(filtered.length===0){el.innerHTML='<div class="empty">이번 달 작업 기록이 없습니다.</div>';return;}
+  if(filtered.length===0){el.innerHTML=`<div class="empty">${monthLbl} 작업 기록이 없습니다.</div>`;return;}
   el.innerHTML=filtered.map(w=>{
     const rcv=rcvAmt(w.id);
     const badge=w.isPaid
