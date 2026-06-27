@@ -559,7 +559,12 @@ if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  firebase.auth().signInWithRedirect(provider).catch(function(e){ alert("로그인 오류: " + e.message); });
+  var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    firebase.auth().signInWithRedirect(provider).catch(function(e){ alert('오류: ' + e.message); });
+  } else {
+    firebase.auth().signInWithPopup(provider).catch(function(e){ alert('오류: ' + e.message); });
+  }
 }
 </script>
 <script>
