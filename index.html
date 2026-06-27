@@ -390,8 +390,13 @@
 
 <!-- 기록 탭 -->
 <div class="page" id="page-work">
+  <div class="stat-nav">
+    <button onclick="moveWork(-1)">‹</button>
+    <span class="sm" id="workLbl"></span>
+    <button onclick="moveWork(1)">›</button>
+  </div>
   <div class="sec">
-    <div class="sec-title">전체 작업 기록</div>
+    <div class="sec-title" id="workSecTitle"></div>
     <div class="card" id="wList"></div>
   </div>
 </div>
@@ -568,6 +573,7 @@ let DB = { works: [], payments: [] };
 const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
+let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let curTab = 'cal';
 let selDate = null;
 let selWorkId = null;
@@ -866,24 +872,37 @@ function delWork(id) {
 }
 
 // ── 기록 탭 ──
+function moveWork(d) {
+  workM+=d; if(workM>11){workM=0;workY++;} if(workM<0){workM=11;workY--;} renderWork();
+}
+
 function renderWork() {
+  document.getElementById('workLbl').textContent=`${workY}년 ${workM+1}월`;
+  const filtered=DB.works.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}));
+  const totalDays=new Set(filtered.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
+  const totalWage=filtered.reduce((s,w)=>{
+    const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}).length;
+    return s+cnt*Number(w.wage);
+  },0);
+  document.getElementById('workSecTitle').textContent=filtered.length>0?`${filtered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}`:'이번 달 작업 기록';
   const el=document.getElementById('wList');
-  if(DB.works.length===0){el.innerHTML='<div class="empty">작업 기록이 없습니다.<br>+ 버튼으로 추가하세요.</div>';return;}
-  el.innerHTML=DB.works.map(w=>{
+  if(filtered.length===0){el.innerHTML='<div class="empty">이번 달 작업 기록이 없습니다.</div>';return;}
+  el.innerHTML=filtered.map(w=>{
     const rcv=rcvAmt(w.id);
     const badge=w.isPaid
       ?'<span class="wi-badge badge-paid">완납</span>'
       :(rcv>0?'<span class="wi-badge badge-partial">부분입금</span>':'<span class="wi-badge badge-unpaid">미입금</span>');
+    const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;});
     return `
       <div class="witem">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
-          <div class="wi-dates">${formatDatesShort(w.dates)} · ${w.dates.length}일</div>
+          <div class="wi-dates">${formatDatesShort(mDates)} · ${mDates.length}일</div>
           <div class="wi-wage">일당 ${fmtW(w.wage)}</div>
           ${badge}
         </div>
         <div class="wi-right">
-          <div class="wi-total">${fmtW(expAmt(w))}</div>
+          <div class="wi-total">${fmtW(mDates.length*Number(w.wage))}</div>
         </div>
         <button class="wi-del" onclick="delWork('${w.id}')">🗑</button>
       </div>`;
