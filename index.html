@@ -559,13 +559,13 @@ if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  alert('isMobile: ' + isMobile);
-  if (isMobile) {
-    firebase.auth().signInWithRedirect(provider).catch(function(e){ alert('오류: ' + e.message); });
-  } else {
-    firebase.auth().signInWithPopup(provider).catch(function(e){ alert('오류: ' + e.message); });
-  }
+  firebase.auth().signInWithPopup(provider).catch(function(e){
+    if (e.code === 'auth/popup-blocked') {
+      firebase.auth().signInWithRedirect(provider);
+    } else {
+      alert('로그인 오류: ' + e.message);
+    }
+  });
 }
 </script>
 <script>
