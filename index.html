@@ -1060,7 +1060,8 @@ function importData(e) {
       const p=JSON.parse(ev.target.result);
       if(!Array.isArray(p.works)||!Array.isArray(p.payments)){alert('올바른 백업 파일이 아닙니다.');return;}
       if(!confirm(`작업 ${p.works.length}건, 입금 ${p.payments.length}건.\n현재 데이터를 덮어쓰고 복원하시겠습니까?`))return;
-      DB=p; save(); alert('복원 완료!'); renderStat();
+      DB=p; save(); alert('복원 완료!');
+      renderCal(); renderWork(); renderPay(); renderStat();
     } catch{alert('파일을 읽을 수 없습니다.');}
   };
   r.readAsText(file); e.target.value='';
@@ -1078,7 +1079,6 @@ document.querySelectorAll('.ov').forEach(o=>{
 auth.getRedirectResult().then(function(result){
   if(result && result.user) console.log('redirect login ok:', result.user.email);
 }).catch(function(e){
-  alert('리다이렉트 오류: ' + e.code + ' / ' + e.message);
   console.error('redirect error', e);
 });
 
