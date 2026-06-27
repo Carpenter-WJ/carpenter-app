@@ -1075,8 +1075,11 @@ document.querySelectorAll('.ov').forEach(o=>{
 });
 
 // ── Firebase 인증 상태 감지 ──
-auth.getRedirectResult().catch(e => {
-  if (e.code !== 'auth/credential-already-in-use') console.error('redirect error:', e);
+auth.getRedirectResult().then(function(result){
+  if(result && result.user) console.log('redirect login ok:', result.user.email);
+}).catch(function(e){
+  alert('리다이렉트 오류: ' + e.code + ' / ' + e.message);
+  console.error('redirect error', e);
 });
 
 auth.onAuthStateChanged(user => {
