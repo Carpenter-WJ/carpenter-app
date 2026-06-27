@@ -612,11 +612,6 @@ async function loadData() {
   renderCal();
 }
 
-function signIn() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithRedirect(provider).catch(e => alert('로그인 실패: ' + e.message));
-}
-
 function doSignOut() {
   if (confirm('로그아웃 하시겠습니까?')) auth.signOut();
 }
