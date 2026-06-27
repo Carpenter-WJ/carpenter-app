@@ -502,7 +502,10 @@
 <div class="ov" id="payDetailOv">
   <div class="sheet">
     <div class="sh-handle"></div>
-    <div class="sh-title" id="pdSite"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div class="sh-title" id="pdSite" style="margin-bottom:0"></div>
+      <button onclick="closeOv('payDetailOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
     <div class="sh-sub" id="pdInfo"></div>
     <div id="pdPayRows"></div>
     <button class="btn-out" onclick="openAddPayOv()">+ 입금 추가</button>
@@ -520,7 +523,10 @@
 <div class="ov" id="addPayOv">
   <div class="sheet">
     <div class="sh-handle"></div>
-    <div class="sh-title">입금 추가</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div class="sh-title" style="margin-bottom:0">입금 추가</div>
+      <button onclick="closeOv('addPayOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
     <div class="fg">
       <label>입금일</label>
       <input type="date" id="inPayDate">
