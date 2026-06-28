@@ -574,14 +574,10 @@ var _deferredPrompt = null;
 
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  if (_isStandalone && _isAndroid) {
-    firebase.auth().signInWithRedirect(provider);
-  } else {
-    firebase.auth().signInWithPopup(provider).catch(function(e){
-      if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
-      alert('로그인 오류 (' + e.code + ')\n' + e.message);
-    });
-  }
+  firebase.auth().signInWithPopup(provider).catch(function(e){
+    if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+    alert('로그인 오류 (' + e.code + ')\n' + e.message);
+  });
 }
 
 function installApp() {
@@ -610,14 +606,13 @@ window.addEventListener('appinstalled', function() {
 });
 
 (function initInstallUI() {
-  if (_isStandalone) return;
+  if (_isStandalone) {
+    if (_isIOS) document.getElementById('iosStandaloneHint').style.display = 'block';
+    return;
+  }
   if (_isIOS) {
     document.getElementById('installBanner').innerHTML =
       '<button onclick="showIOSInstallGuide()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.5);border-radius:12px;color:#fff;padding:13px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">📲 홈 화면에 앱 추가하는 방법</button>';
-  }
-  if (_isIOS && _isStandalone) {
-    document.getElementById('iosStandaloneHint').style.display = 'block';
-    document.getElementById('loginBtn').style.display = 'none';
   }
 })()
 </script>
@@ -1149,13 +1144,6 @@ document.querySelectorAll('.ov').forEach(o=>{
 });
 
 // ── Firebase 인증 상태 감지 ──
-auth.getRedirectResult().then(function(result){
-  // redirect 로그인 성공은 onAuthStateChanged가 처리
-}).catch(function(e){
-  if (!e || e.message.includes('missing initial state')) return;
-  alert('로그인 오류 (' + e.code + ')\n' + e.message);
-});
-
 auth.onAuthStateChanged(user => {
   const loginScreen = document.getElementById('loginScreen');
   if (user) {
