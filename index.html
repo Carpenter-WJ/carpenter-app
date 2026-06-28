@@ -800,9 +800,10 @@ function renderCal() {
   let mWage=0, mUnit=0;
   DB.works.forEach(w=>{
     const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).length;
+    if(!cnt) return;
     const u=Number(w.unit||1);
     mWage+=cnt*Number(w.wage)*u;
-    mUnit+=cnt*u;
+    mUnit+=u;
   });
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===calY&&d.m===calM;}).reduce((s,p)=>s+Number(p.amount),0);
   const mUnitStr=mUnit%1===0?mUnit:mUnit.toFixed(1);
@@ -1219,7 +1220,7 @@ function renderStat() {
     const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
     const u=Number(w.unit||1);
     mWage+=cnt*Number(w.wage)*u;
-    sUnit+=cnt*u;
+    sUnit+=u;
   });
   const workDays=new Set(works.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
