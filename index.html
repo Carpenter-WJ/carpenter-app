@@ -98,7 +98,7 @@
       display:flex; align-items:center; cursor:pointer; min-width:0;
     }
     .ccell {
-      min-height: max(52px, 12.5vw); border-right:1px solid var(--border);
+      min-height: clamp(52px, calc((100dvh - 290px) / 6), 90px); border-right:1px solid var(--border);
       padding:3px 2px; cursor:pointer; overflow:hidden;
     }
     .ccell:nth-child(7n) { border-right:none; }
@@ -703,7 +703,7 @@
     </div>
     <div class="sh-sub" id="pdInfo"></div>
     <div id="pdPayRows"></div>
-    <button class="btn-out" onclick="openAddPayOv()">+ 입금 추가</button>
+    <button class="btn-out" onclick="openAddPayOv()">+ 정산 추가</button>
     <div class="paid-toggle">
       <div>
         <div class="pt-label">완납 처리</div>
@@ -719,11 +719,11 @@
   <div class="sheet">
     <div class="sh-handle"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-      <div class="sh-title" style="margin-bottom:0">입금 추가</div>
+      <div class="sh-title" style="margin-bottom:0">정산 추가</div>
       <button onclick="closeOv('addPayOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
     </div>
     <div class="fg">
-      <label>입금일</label>
+      <label>정산일</label>
       <button class="fg-date-btn" id="inPayDateDisplay" onclick="openPayDatePick()">
         <span id="inPayDateText">날짜 선택</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--muted)"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -731,7 +731,7 @@
       <input type="hidden" id="inPayDate">
     </div>
     <div class="fg">
-      <label>입금액 (원)</label>
+      <label>정산액 (원)</label>
       <input type="number" id="inPayAmt" placeholder="0" inputmode="numeric">
     </div>
     <div class="fg">
@@ -1244,6 +1244,7 @@ function closeDatePickOv() {
     payDateMode=false;
     document.querySelector('.mode-seg').style.display='';
     document.getElementById('datePickTitle').textContent='날짜 선택';
+    document.getElementById('datePickOv').style.zIndex='';
   }
   closeOv('datePickOv');
 }
@@ -1257,7 +1258,8 @@ function openPayDatePick() {
   rangeStart=null;
   document.querySelector('.mode-seg').style.display='none';
   document.getElementById('rangeHint').style.display='none';
-  document.getElementById('datePickTitle').textContent='입금일 선택';
+  document.getElementById('datePickTitle').textContent='정산일 선택';
+  document.getElementById('datePickOv').style.zIndex='400';
   renderPickCal();
   openOv('datePickOv');
 }
@@ -1318,7 +1320,7 @@ function renderPickCal() {
   document.getElementById('pickGrid').innerHTML=html;
 
   const total=pickSel.length;
-  document.getElementById('pickSelCount').textContent=total>0?`${total}일 선택됨`:'';
+  document.getElementById('pickSelCount').textContent=(!payDateMode&&total>0)?`${total}일 선택됨`:'';
 }
 
 function onPickDay(ds) {
@@ -1363,6 +1365,7 @@ function confirmDatePick() {
     payDateMode=false;
     document.querySelector('.mode-seg').style.display='';
     document.getElementById('datePickTitle').textContent='날짜 선택';
+    document.getElementById('datePickOv').style.zIndex='';
     closeOv('datePickOv');
     return;
   }
