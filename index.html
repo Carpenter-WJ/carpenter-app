@@ -1023,7 +1023,18 @@ function formatDatesShort(dates) {
   if(!dates||dates.length===0) return '';
   const s=[...dates].sort();
   if(s.length===1) return `${fmtDate(s[0])} · 1일`;
-  return `${fmtDate(s[0])}~${fmtDate(s[s.length-1])} · ${s.length}일`;
+  // 연속 구간 분리
+  const ranges=[];
+  let rs=s[0], re=s[0];
+  for(let i=1;i<=s.length;i++){
+    if(i<s.length){
+      const a=new Date(re+'T00:00:00'), b=new Date(s[i]+'T00:00:00');
+      if((b-a)/86400000===1){re=s[i];continue;}
+    }
+    ranges.push(rs===re?fmtDate(rs):`${fmtDate(rs)}~${fmtDate(re)}`);
+    if(i<s.length){rs=s[i];re=s[i];}
+  }
+  return `${ranges.join(', ')} · ${s.length}일`;
 }
 
 // ── 온보딩 ──
