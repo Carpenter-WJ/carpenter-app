@@ -567,10 +567,32 @@ const firebaseConfig = {
 };
 if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 
-var _isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-var _isAndroid = /Android/i.test(navigator.userAgent);
+var _ua = navigator.userAgent;
+var _isIOS = /iPhone|iPad|iPod/i.test(_ua);
+var _isAndroid = /Android/i.test(_ua);
 var _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+var _isInApp = /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Twitter|Line/i.test(_ua);
 var _deferredPrompt = null;
+
+// 인앱 브라우저 감지 시 로그인 화면 교체
+if (_isInApp) {
+  window.addEventListener('DOMContentLoaded', function() {
+    var ls = document.getElementById('loginScreen');
+    if (!ls) return;
+    ls.innerHTML = '<div class="login-icon">🔨</div>'
+      + '<div class="login-title">목수 일지</div>'
+      + '<div class="login-sub" style="margin-bottom:32px">현장 작업 및 임금 관리</div>'
+      + '<div style="background:rgba(255,255,255,.15);border-radius:16px;padding:24px 20px;text-align:center;line-height:1.9;font-size:14px;">'
+      + '⚠️ 카카오톡·인스타 등<br>앱 내 브라우저에서는<br>구글 로그인이 차단됩니다.<br><br>'
+      + (_isAndroid
+        ? '<b>우측 상단 ⋮ → 다른 브라우저로 열기</b><br>또는 아래 버튼을 눌러주세요.'
+        : '<b>우측 하단 ··· → Safari로 열기</b><br>를 탭해주세요.')
+      + '</div>'
+      + (_isAndroid
+        ? '<button onclick="location.href=\'intent://'+location.host+location.pathname+'#Intent;scheme=https;package=com.android.chrome;end\'" style="background:#fff;color:#333;border:none;border-radius:14px;padding:16px 28px;font-size:16px;font-weight:600;cursor:pointer;width:100%;margin-top:20px;box-shadow:0 4px 16px rgba(0,0,0,.2);">크롬으로 열기</button>'
+        : '');
+  });
+}
 
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
