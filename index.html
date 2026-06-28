@@ -560,10 +560,15 @@ if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  firebase.auth().signInWithPopup(provider).catch(function(e){
-    if (e.code === 'auth/popup-closed-by-user') return;
-    alert('로그인 오류 (' + e.code + ')\n' + e.message);
-  });
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (isStandalone) {
+    firebase.auth().signInWithRedirect(provider);
+  } else {
+    firebase.auth().signInWithPopup(provider).catch(function(e){
+      if (e.code === 'auth/popup-closed-by-user') return;
+      alert('로그인 오류 (' + e.code + ')\n' + e.message);
+    });
+  }
 }
 </script>
 <script>
@@ -1094,6 +1099,13 @@ document.querySelectorAll('.ov').forEach(o=>{
 });
 
 // ── Firebase 인증 상태 감지 ──
+auth.getRedirectResult().then(function(result){
+  // redirect 로그인 성공은 onAuthStateChanged가 처리
+}).catch(function(e){
+  if (!e || e.message.includes('missing initial state')) return;
+  alert('로그인 오류 (' + e.code + ')\n' + e.message);
+});
+
 auth.onAuthStateChanged(user => {
   const loginScreen = document.getElementById('loginScreen');
   if (user) {
