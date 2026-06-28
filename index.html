@@ -122,6 +122,21 @@
     .sec-title { font-size:12px; font-weight:700; color:var(--muted); margin-bottom:8px; letter-spacing:.3px; }
     .card { background:var(--card); border-radius:14px; overflow:hidden; margin-bottom:12px; }
     .empty { text-align:center; color:var(--muted); padding:40px 20px; font-size:14px; line-height:1.7; }
+    .es { text-align:center; padding:52px 24px 40px; }
+    .es-icon { font-size:52px; margin-bottom:16px; line-height:1; }
+    .es-title { font-size:17px; font-weight:700; color:var(--text); margin-bottom:8px; }
+    .es-desc { font-size:14px; color:var(--muted); line-height:1.8; }
+
+    /* 온보딩 */
+    .ob-ov { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:900; display:flex; align-items:flex-end; }
+    .ob-card { background:var(--card); border-radius:28px 28px 0 0; padding:36px 28px calc(44px + env(safe-area-inset-bottom)); width:100%; }
+    .ob-icon { font-size:56px; text-align:center; margin-bottom:22px; line-height:1; }
+    .ob-title { font-size:22px; font-weight:800; text-align:center; margin-bottom:10px; }
+    .ob-desc { font-size:15px; color:var(--muted); text-align:center; line-height:1.8; margin-bottom:32px; }
+    .ob-dots { display:flex; justify-content:center; gap:7px; margin-bottom:24px; }
+    .ob-dot { width:7px; height:7px; border-radius:50%; background:var(--border); transition:all .25s; }
+    .ob-dot.on { width:22px; background:var(--pri); border-radius:4px; }
+    .ob-btn { width:100%; padding:17px; background:var(--pri); color:#fff; border:none; border-radius:16px; font-size:16px; font-weight:700; cursor:pointer; font-family:inherit; }
 
     /* 기록 아이템 */
     .witem {
@@ -523,6 +538,17 @@
 
   <!-- 로그아웃 -->
   <button class="set-logout-btn" onclick="doSignOut()">로그아웃</button>
+</div>
+
+<!-- 온보딩 -->
+<div class="ob-ov" id="obOv" style="display:none" onclick="if(event.target===this){}">
+  <div class="ob-card">
+    <div class="ob-icon" id="obIcon"></div>
+    <div class="ob-title" id="obTitle"></div>
+    <div class="ob-desc" id="obDesc"></div>
+    <div class="ob-dots" id="obDots"></div>
+    <button class="ob-btn" id="obBtn" onclick="onboardNext()"></button>
+  </div>
 </div>
 
 <!-- FAB -->
@@ -948,6 +974,7 @@ async function loadData() {
     if (local) DB = JSON.parse(local);
   }
   renderCal();
+  setTimeout(showOnboard, 600);
 }
 
 function doSignOut() {
@@ -971,6 +998,31 @@ function formatDatesShort(dates) {
   const s=[...dates].sort();
   if(s.length===1) return `${fmtDate(s[0])} · 1일`;
   return `${fmtDate(s[0])}~${fmtDate(s[s.length-1])} · ${s.length}일`;
+}
+
+// ── 온보딩 ──
+const OB_STEPS = [
+  { icon:'🗓️', title:'달력에서 현장 추가', desc:'날짜를 탭하면 그날의 작업을\n바로 추가할 수 있어요' },
+  { icon:'🧾', title:'정산으로 미수금 관리', desc:'현장마다 받아야 할 금액과\n입금 내역을 한눈에 확인해요' },
+  { icon:'📊', title:'통계로 수입 파악', desc:'월별 작업일수, 품수, 수령액을\n자동으로 정리해드려요' },
+];
+let obStep = 0;
+function showOnboard() {
+  if(localStorage.getItem('onboarded')) return;
+  obStep = 0; renderOb();
+  document.getElementById('obOv').style.display = 'flex';
+}
+function renderOb() {
+  const s = OB_STEPS[obStep];
+  document.getElementById('obIcon').textContent = s.icon;
+  document.getElementById('obTitle').textContent = s.title;
+  document.getElementById('obDesc').innerHTML = s.desc.replace('\n','<br>');
+  document.getElementById('obDots').innerHTML = OB_STEPS.map((_,i)=>`<div class="ob-dot${i===obStep?' on':''}"></div>`).join('');
+  document.getElementById('obBtn').textContent = obStep===OB_STEPS.length-1 ? '시작하기 →' : '다음';
+}
+function onboardNext() {
+  if(obStep < OB_STEPS.length-1) { obStep++; renderOb(); }
+  else { localStorage.setItem('onboarded','1'); document.getElementById('obOv').style.display='none'; }
 }
 
 // ── 탭 ──
@@ -1315,7 +1367,11 @@ function renderWork() {
   const monthLbl=isCurMonth?'이번 달':`${workY}년 ${workM+1}월`;
   document.getElementById('workSecTitle').textContent=filtered.length>0?`${filtered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}`:monthLbl+' 작업 기록';
   const el=document.getElementById('wList');
-  if(filtered.length===0){el.innerHTML=`<div class="empty">${monthLbl} 작업 기록이 없습니다.</div>`;return;}
+  if(filtered.length===0){
+    const isAll = DB.works.length===0;
+    el.innerHTML=`<div class="es"><div class="es-icon">📋</div><div class="es-title">${isAll?'아직 작업 기록이 없어요':monthLbl+' 작업 기록이 없어요'}</div><div class="es-desc">${isAll?'아래 + 버튼을 눌러<br>첫 현장을 추가해보세요':'이 달엔 작업 기록이 없어요<br>다른 달을 선택하거나 추가해보세요'}</div></div>`;
+    return;
+  }
   el.innerHTML=filtered.map(w=>{
     const rcv=rcvAmt(w.id);
     const badge=w.isPaid
@@ -1357,7 +1413,7 @@ function renderPay() {
   document.getElementById('hideCompWrap').innerHTML=`<button onclick="toggleHideComp()" style="background:${hideComp?'var(--pri)':'none'};color:${hideComp?'#fff':'var(--muted)'};border:1.5px solid ${hideComp?'var(--pri)':'var(--border)'};border-radius:20px;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer;">완납 숨기기</button>`;
 
   const el=document.getElementById('pList');
-  if(DB.works.length===0){el.innerHTML='<div class="empty">작업 기록이 없습니다.<br>기록 탭에서 먼저 추가해 주세요.</div>';return;}
+  if(DB.works.length===0){el.innerHTML='<div class="es"><div class="es-icon">🧾</div><div class="es-title">정산할 현장이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>여기서 입금 현황을 관리할 수 있어요</div></div>';return;}
 
   const sorted=[...DB.works].filter(w=>!hideComp||!w.isPaid).sort((a,b)=>a.isPaid===b.isPaid?0:a.isPaid?1:-1);
   el.innerHTML=sorted.map(w=>{
@@ -1494,7 +1550,7 @@ function renderStat() {
   document.getElementById('statSecTitle').textContent=statMonthLbl+' 작업 내역';
 
   const wl=document.getElementById('statWList');
-  if(works.length===0){wl.innerHTML=`<div class="empty">${statMonthLbl} 작업 기록이 없습니다.</div>`;return;}
+  if(works.length===0){wl.innerHTML=`<div class="es"><div class="es-icon">📊</div><div class="es-title">${statMonthLbl} 작업 기록이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>수입 통계가 자동으로 계산돼요</div></div>`;return;}
   wl.innerHTML=works.map(w=>{
     const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;});
     return `
