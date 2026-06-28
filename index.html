@@ -266,7 +266,7 @@
       padding:11px 0; cursor:pointer; user-select:none;
     }
     .it-lbl { font-size:14px; font-weight:600; color:var(--muted); }
-    .info-arrow { font-size:16px; color:var(--muted); transition:transform .2s; }
+    .info-arrow { width:22px; height:22px; color:var(--muted); transition:transform .2s; flex-shrink:0; }
     .info-arrow.open { transform:rotate(180deg); }
     .info-body { display:none; padding-top:2px; }
     .info-body.open { display:block; }
@@ -622,7 +622,7 @@
     <div class="info-section">
       <div class="info-toggle" onclick="toggleInfoSection()">
         <span class="it-lbl">현장 정보 <span style="font-weight:400;font-size:12px">(선택)</span></span>
-        <span class="info-arrow" id="infoArrow">▾</span>
+        <svg class="info-arrow" id="infoArrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="info-body" id="infoBody">
         <div class="fg">
