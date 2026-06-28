@@ -105,6 +105,8 @@
     .ccell.today .dnum { background:var(--pri); color:#fff !important; }
     .ccell.sunday:not(.other) .dnum { color:var(--red); }
     .ccell.saturday:not(.other) .dnum { color:var(--blue); }
+    .ccell.holiday:not(.other) .dnum { color:var(--red) !important; }
+    .holi { font-size:8px; color:var(--red); text-align:center; line-height:1.3; margin-top:1px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 
     /* 공통 */
     .sec { padding:14px; }
@@ -723,6 +725,29 @@ const auth = firebase.auth();
 const fsdb = firebase.firestore();
 fsdb.enablePersistence({synchronizeTabs:true}).catch(function(){});
 
+// 고정 공휴일 (MM-DD)
+const FIXED_HOL = {
+  '01-01':'신정','03-01':'삼일절','05-05':'어린이날','06-06':'현충일',
+  '08-15':'광복절','10-03':'개천절','10-09':'한글날','12-25':'성탄절'
+};
+// 음력 기반 공휴일 (YYYY-MM-DD) — 설날·추석·부처님오신날·대체공휴일
+const VAR_HOL = {
+  '2024-02-09':'설연휴','2024-02-10':'설날','2024-02-11':'설연휴',
+  '2024-02-12':'대체공휴일','2024-05-15':'부처님오신날',
+  '2024-09-16':'추석연휴','2024-09-17':'추석','2024-09-18':'추석연휴',
+  '2025-01-28':'설연휴','2025-01-29':'설날','2025-01-30':'설연휴',
+  '2025-03-03':'대체공휴일','2025-05-06':'대체공휴일',
+  '2025-10-05':'추석연휴','2025-10-06':'추석','2025-10-07':'추석연휴',
+  '2025-10-08':'대체공휴일',
+  '2026-02-17':'설연휴','2026-02-18':'설날','2026-02-19':'설연휴',
+  '2026-05-24':'부처님오신날',
+  '2026-09-24':'추석연휴','2026-09-25':'추석','2026-09-26':'추석연휴',
+  '2027-02-06':'설연휴','2027-02-07':'설날','2027-02-08':'설연휴',
+  '2027-05-13':'부처님오신날',
+  '2027-09-14':'추석연휴','2027-09-15':'추석','2027-09-16':'추석연휴',
+};
+function getHoli(ds) { return VAR_HOL[ds] || FIXED_HOL[ds.slice(5)] || null; }
+
 const WORK_COLORS = [
   { id:'orange', bg:'#fff3e8', border:'#E67E22' },
   { id:'red',    bg:'#fff0ee', border:'#FF3B30' },
@@ -896,11 +921,13 @@ function renderCal() {
         html+=`<div class="ccell other"><span class="dnum">${cell.d}</span></div>`;
       } else {
         const wd=dowN(calY,calM,cell.d);
+        const holi=getHoli(cell.ds);
         let cls='ccell';
         if(cell.ds===todStr)cls+=' today';
         if(wd===0)cls+=' sunday';
         if(wd===6)cls+=' saturday';
-        html+=`<div class="${cls}" onclick="openDayOv('${cell.ds}')"><span class="dnum">${cell.d}</span></div>`;
+        if(holi)cls+=' holiday';
+        html+=`<div class="${cls}" onclick="openDayOv('${cell.ds}')"><span class="dnum">${cell.d}</span>${holi?`<div class="holi">${holi}</div>`:''}</div>`;
       }
     });
     html+='</div>';
@@ -938,7 +965,8 @@ function renderCal() {
 // ── 날짜 모달 ──
 function openDayOv(ds) {
   selDate=ds;
-  document.getElementById('dayOvTitle').textContent=fmtDate(ds);
+  const h=getHoli(ds);
+  document.getElementById('dayOvTitle').textContent=fmtDate(ds)+(h?` · ${h}`:'');
   const works=DB.works.filter(w=>w.dates.includes(ds));
   if(works.length===0){
     document.getElementById('dayOvWorks').innerHTML='<div class="empty" style="padding:16px 0 8px">이 날 작업 기록이 없습니다</div>';
