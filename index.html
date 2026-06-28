@@ -560,18 +560,10 @@ if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (isMobile) {
-    firebase.auth().signInWithRedirect(provider);
-  } else {
-    firebase.auth().signInWithPopup(provider).catch(function(e){
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-        firebase.auth().signInWithRedirect(provider);
-      } else {
-        alert('로그인 오류 (' + e.code + ')\n' + e.message);
-      }
-    });
-  }
+  firebase.auth().signInWithPopup(provider).catch(function(e){
+    if (e.code === 'auth/popup-closed-by-user') return;
+    alert('로그인 오류 (' + e.code + ')\n' + e.message);
+  });
 }
 </script>
 <script>
