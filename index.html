@@ -175,7 +175,7 @@
       padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer;
     }
     .pitem:last-child { border-bottom:none; }
-    .pitem:active { background:#f9f9f9; }
+    .pitem:active { background:var(--bg-sub); }
     .pi-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
     .pi-site { font-size:16px; font-weight:700; }
     .pi-meta { font-size:12px; color:var(--muted); margin-top:2px; }
@@ -231,7 +231,7 @@
       border-radius:11px; font-size:16px; font-family:inherit;
       color:var(--text); outline:none; transition:border-color .18s;
       box-sizing:border-box; -webkit-appearance:none; appearance:none;
-      background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238E8E93' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 14px center;
+      background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238E8E93' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 14px center;
     }
     .fg select:focus { border-color:var(--pri); }
 
@@ -274,7 +274,7 @@
     /* 날짜 선택 캘린더 */
     .mode-seg { display:flex; background:var(--bg); border-radius:10px; padding:3px; margin-bottom:14px; }
     .mode-btn { flex:1; border:none; background:none; border-radius:8px; padding:8px 0; font-size:14px; font-weight:600; color:var(--muted); cursor:pointer; transition:all .15s; }
-    .mode-btn.on { background:#fff; color:var(--pri); box-shadow:0 1px 3px rgba(0,0,0,.1); }
+    .mode-btn.on { background:var(--card); color:var(--pri); box-shadow:0 1px 3px rgba(0,0,0,.1); }
     .pick-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
     .pick-nav button { background:none; border:none; font-size:22px; color:var(--pri); cursor:pointer; padding:4px 8px; }
     .pick-nav .pm { font-size:16px; font-weight:700; }
@@ -289,7 +289,7 @@
       color:var(--text); font-weight:500; transition:background .1s;
     }
     .pd.other { color:#ddd; pointer-events:none; }
-    .pd.already { background:#f0f0f0; color:var(--muted); border-radius:50%; }
+    .pd.already { background:var(--bg-sub); color:var(--muted); border-radius:50%; }
     .pd.sel { background:var(--pri); color:#fff; font-weight:700; }
     .pd.rng-start { background:var(--dark); color:#fff; font-weight:700; }
     .pd.in-rng { background:#FFE0BC; color:var(--dark); border-radius:0; }
@@ -447,7 +447,7 @@
     </div>
     <div class="cal-sum" id="calSum"></div>
   </div>
-  <div style="background:#fff">
+  <div style="background:var(--card)">
     <div class="dow-row">
       <div class="dow-lbl sun">일</div>
       <div class="dow-lbl">월</div>
@@ -479,7 +479,7 @@
   <div id="balArea"></div>
   <div class="sec">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div class="sec-title" style="margin-bottom:0">현장별 입금 현황</div>
+      <div class="sec-title" style="margin-bottom:0">현장별 정산 현황</div>
       <div id="hideCompWrap"></div>
     </div>
     <div class="card" id="pList"></div>
@@ -1435,7 +1435,7 @@ function renderPay() {
             ${diffHtml}
           </div>
         </div>
-        <div class="pi-bottom">${badge}<div class="pi-arrow">입금 관리 ›</div></div>
+        <div class="pi-bottom">${badge}<div class="pi-arrow">상세 보기 ›</div></div>
       </div>`;
   }).join('');
 }
@@ -1533,21 +1533,21 @@ function renderStat() {
   const avgWage=workDays>0?Math.round(mWage/workDays):0;
   const sUnitStr=sUnit%1===0?sUnit:sUnit.toFixed(1);
 
+  const now=new Date();
+  const isCurStat=statY===now.getFullYear()&&statM===now.getMonth();
+  const statMonthLbl=isCurStat?'이번 달':`${statY}년 ${statM+1}월`;
+  document.getElementById('statSecTitle').textContent=statMonthLbl+' 작업 내역';
+
   document.getElementById('statGrid').innerHTML=`
     <div class="sbox"><div class="sl">작업일수</div><div class="sv">${workDays}일</div></div>
     <div class="sbox"><div class="sl">품수</div><div class="sv">${sUnitStr}품</div></div>
     <div class="sbox"><div class="sl">현장 수</div><div class="sv">${works.length}곳</div></div>
-    <div class="sbox grn"><div class="sl">이번 달 수령</div><div class="sv">${(mPaid/10000).toFixed(1)}만</div></div>
+    <div class="sbox grn"><div class="sl">${statMonthLbl} 수령</div><div class="sv">${(mPaid/10000).toFixed(1)}만</div></div>
     <div class="sbox ori"><div class="sl">총 임금</div><div class="sv">${(mWage/10000).toFixed(1)}만</div></div>
     <div class="sbox"><div class="sl">평균 일당</div><div class="sv">${workDays>0?fmtW(avgWage):'—'}</div></div>
     <div class="sbox ${allOutstanding>0?'red':'grn'}" style="grid-column:1/-1">
       <div class="sl">전체 미수금</div><div class="sv">${fmtW(allOutstanding)}</div>
     </div>`;
-
-  const now=new Date();
-  const isCurStat=statY===now.getFullYear()&&statM===now.getMonth();
-  const statMonthLbl=isCurStat?'이번 달':`${statY}년 ${statM+1}월`;
-  document.getElementById('statSecTitle').textContent=statMonthLbl+' 작업 내역';
 
   const wl=document.getElementById('statWList');
   if(works.length===0){wl.innerHTML=`<div class="es"><div class="es-icon">📊</div><div class="es-title">${statMonthLbl} 작업 기록이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>수입 통계가 자동으로 계산돼요</div></div>`;return;}
