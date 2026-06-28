@@ -156,6 +156,7 @@
     .badge-unpaid { background:var(--badge-unpaid); color:var(--red); }
     .badge-partial { background:var(--badge-partial); color:#E67E22; }
     .wi-right { text-align:right; flex-shrink:0; }
+    .wi-calc { font-size:11px; color:var(--muted); margin-top:3px; }
     .wi-total { font-size:17px; font-weight:700; color:var(--pri); }
     .wi-del { background:none; border:none; color:var(--muted); font-size:16px; padding:4px 0 4px 6px; cursor:pointer; }
 
@@ -1376,19 +1377,23 @@ function renderWork() {
     const rcv=rcvAmt(w.id);
     const badge=w.isPaid
       ?'<span class="wi-badge badge-paid">완납</span>'
-      :(rcv>0?'<span class="wi-badge badge-partial">부분입금</span>':'<span class="wi-badge badge-unpaid">미입금</span>');
+      :(rcv>0?'<span class="wi-badge badge-partial">부분정산</span>':'<span class="wi-badge badge-unpaid">미정산</span>');
     const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;});
+    const u=Number(w.unit||1);
+    const total=mDates.length*Number(w.wage)*u;
+    const calc=(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})();
     const c=getColor(w.color||'orange');
     return `
       <div class="witem" style="border-left:4px solid ${c.border}">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
-          <div class="wi-dates">${formatDatesShort(mDates)} · ${Number(w.unit||1)}품</div>
-          <div class="wi-wage">일당 ${fmtW(w.wage)}${Number(w.unit||1)!==1?` × ${w.unit}품`:''}</div>
+          <div class="wi-dates">${formatDatesShort(mDates)}</div>
+          <div class="wi-wage">일당 ${fmtW(w.wage)}${u!==1?` · ${u}품`:''}</div>
           ${badge}
         </div>
         <div class="wi-right">
-          <div class="wi-total">${fmtW(mDates.length*Number(w.wage)*Number(w.unit||1))}</div>
+          <div class="wi-total">${fmtW(total)}</div>
+          ${calc?`<div class="wi-calc">${calc}</div>`:''}
         </div>
         <button class="wi-del" onclick="delWork('${w.id}')">🗑</button>
       </div>`;
@@ -1420,7 +1425,7 @@ function renderPay() {
     const exp=expAmt(w), rcv=rcvAmt(w.id), diff=rcv-exp;
     const badge=w.isPaid
       ?'<span class="wi-badge badge-paid" style="font-size:11px">완납</span>'
-      :(rcv>0?'<span class="wi-badge badge-partial" style="font-size:11px">부분입금</span>':'<span class="wi-badge badge-unpaid" style="font-size:11px">미입금</span>');
+      :(rcv>0?'<span class="wi-badge badge-partial" style="font-size:11px">부분정산</span>':'<span class="wi-badge badge-unpaid" style="font-size:11px">미정산</span>');
     const diffHtml=diff===0?'':`<div class="pi-diff ${diff<0?'minus':'plus'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))} ${diff<0?'덜 받음':'더 받음'}</div>`;
     return `
       <div class="pitem" onclick="openPayDetail('${w.id}')">
@@ -1553,14 +1558,20 @@ function renderStat() {
   if(works.length===0){wl.innerHTML=`<div class="es"><div class="es-icon">📊</div><div class="es-title">${statMonthLbl} 작업 기록이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>수입 통계가 자동으로 계산돼요</div></div>`;return;}
   wl.innerHTML=works.map(w=>{
     const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;});
+    const u=Number(w.unit||1);
+    const total=mDates.length*Number(w.wage)*u;
+    const calc=(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})();
     return `
       <div class="witem">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
           <div class="wi-dates">${formatDatesShort(mDates)}</div>
-          <div class="wi-wage">일당 ${fmtW(w.wage)}</div>
+          <div class="wi-wage">일당 ${fmtW(w.wage)}${u!==1?` · ${u}품`:''}</div>
         </div>
-        <div class="wi-total">${fmtW(mDates.length*Number(w.wage))}</div>
+        <div class="wi-right">
+          <div class="wi-total">${fmtW(total)}</div>
+          ${calc?`<div class="wi-calc">${calc}</div>`:''}
+        </div>
       </div>`;
   }).join('');
 }
