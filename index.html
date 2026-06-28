@@ -233,6 +233,18 @@
       font-size:13px; color:var(--muted); cursor:pointer;
     }
 
+    /* 현장정보 접이식 */
+    .info-section { border-top:1px solid var(--border); margin:4px 0 4px; }
+    .info-toggle {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:11px 0; cursor:pointer; user-select:none;
+    }
+    .it-lbl { font-size:14px; font-weight:600; color:var(--muted); }
+    .info-arrow { font-size:11px; color:var(--muted); transition:transform .2s; }
+    .info-arrow.open { transform:rotate(180deg); }
+    .info-body { display:none; padding-top:2px; }
+    .info-body.open { display:block; }
+
     /* 날짜 선택 캘린더 */
     .mode-seg { display:flex; background:var(--bg); border-radius:10px; padding:3px; margin-bottom:14px; }
     .mode-btn { flex:1; border:none; background:none; border-radius:8px; padding:8px 0; font-size:14px; font-weight:600; color:var(--muted); cursor:pointer; transition:all .15s; }
@@ -511,6 +523,30 @@
       <label>색상</label>
       <div class="color-chips" id="colorChips"></div>
     </div>
+    <div class="info-section">
+      <div class="info-toggle" onclick="toggleInfoSection()">
+        <span class="it-lbl">현장 정보 <span style="font-weight:400;font-size:12px">(선택)</span></span>
+        <span class="info-arrow" id="infoArrow">▾</span>
+      </div>
+      <div class="info-body" id="infoBody">
+        <div class="fg">
+          <label>현장 주소</label>
+          <input type="text" id="inAddress" placeholder="예) 서울시 강남구 테헤란로 123">
+        </div>
+        <div class="fg">
+          <label>담당자</label>
+          <input type="text" id="inContact" placeholder="이름">
+        </div>
+        <div class="fg">
+          <label>연락처</label>
+          <input type="tel" id="inPhone" placeholder="010-0000-0000" inputmode="tel">
+        </div>
+        <div class="fg">
+          <label>메모</label>
+          <input type="text" id="inMemo" placeholder="기타 메모사항">
+        </div>
+      </div>
+    </div>
     <div class="fg">
       <label id="dateLabel">일한 날짜</label>
       <div class="date-chips" id="dateChips"></div>
@@ -710,6 +746,14 @@ let selDate = null;
 let selWorkId = null;
 let editDates = [];
 let editColor = 'orange';
+
+function toggleInfoSection(force) {
+  const body=document.getElementById('infoBody');
+  const arrow=document.getElementById('infoArrow');
+  const open=force!==undefined?force:!body.classList.contains('open');
+  body.classList.toggle('open',open);
+  arrow.classList.toggle('open',open);
+}
 
 function renderColorChips() {
   document.getElementById('colorChips').innerHTML = WORK_COLORS.map(c =>
@@ -918,13 +962,28 @@ function openWorkOv(workId, prefillDate) {
   document.getElementById('workOvTitle').textContent=workId?'작업 수정':'작업 추가';
   if(workId){
     const w=DB.works.find(x=>x.id===workId);
-    if(w){ document.getElementById('inSite').value=w.site; document.getElementById('inWage').value=w.wage; document.getElementById('inUnit').value=String(w.unit||1); editDates=[...w.dates]; editColor=w.color||'orange'; }
+    if(w){
+      document.getElementById('inSite').value=w.site;
+      document.getElementById('inWage').value=w.wage;
+      document.getElementById('inUnit').value=String(w.unit||1);
+      editDates=[...w.dates]; editColor=w.color||'orange';
+      document.getElementById('inAddress').value=w.address||'';
+      document.getElementById('inContact').value=w.contact||'';
+      document.getElementById('inPhone').value=w.phone||'';
+      document.getElementById('inMemo').value=w.memo||'';
+      toggleInfoSection(!!(w.address||w.contact||w.phone||w.memo));
+    }
   } else {
     document.getElementById('inSite').value='';
     document.getElementById('inWage').value='';
     document.getElementById('inUnit').value='1';
+    document.getElementById('inAddress').value='';
+    document.getElementById('inContact').value='';
+    document.getElementById('inPhone').value='';
+    document.getElementById('inMemo').value='';
     editColor='orange';
     if(prefillDate) editDates=[prefillDate];
+    toggleInfoSection(false);
   }
   renderColorChips();
   renderDateChips();
@@ -1035,14 +1094,18 @@ function saveWork() {
   const wage=Number(document.getElementById('inWage').value);
   const unit=Number(document.getElementById('inUnit').value);
   const workId=document.getElementById('editWorkId').value;
+  const address=document.getElementById('inAddress').value.trim();
+  const contact=document.getElementById('inContact').value.trim();
+  const phone=document.getElementById('inPhone').value.trim();
+  const memo=document.getElementById('inMemo').value.trim();
   if(!site){alert('현장명을 입력해 주세요.');return;}
   if(!wage){alert('일당을 입력해 주세요.');return;}
   if(editDates.length===0){alert('날짜를 1개 이상 추가해 주세요.');return;}
   if(workId){
     const w=DB.works.find(x=>x.id===workId);
-    if(w){w.site=site;w.wage=wage;w.unit=unit;w.dates=editDates.sort();w.color=editColor;}
+    if(w){w.site=site;w.wage=wage;w.unit=unit;w.dates=editDates.sort();w.color=editColor;w.address=address;w.contact=contact;w.phone=phone;w.memo=memo;}
   } else {
-    DB.works.push({id:Date.now().toString(36),site,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor});
+    DB.works.push({id:Date.now().toString(36),site,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo});
   }
   DB.works.sort((a,b)=>b.dates[b.dates.length-1].localeCompare(a.dates[a.dates.length-1]));
   save(); closeAll();
@@ -1152,10 +1215,16 @@ function openPayDetail(wId) {
   if(!w)return;
   const exp=expAmt(w), rcv=rcvAmt(wId), diff=rcv-exp;
   document.getElementById('pdSite').textContent=w.site;
+  const infoLines=[
+    w.address&&`<div style="font-size:12px;color:var(--muted);margin-top:4px">📍 ${w.address}</div>`,
+    (w.contact||w.phone)&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">👤 ${[w.contact,w.phone].filter(Boolean).join(' · ')}</div>`,
+    w.memo&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">📝 ${w.memo}</div>`,
+  ].filter(Boolean).join('');
   document.getElementById('pdInfo').innerHTML=`
     ${formatDatesShort(w.dates)} · 일당 ${fmtW(w.wage)}<br>
     예상 <b>${fmtW(exp)}</b> &nbsp;|&nbsp; 수령 <b>${fmtW(rcv)}</b>
     ${diff!==0?` &nbsp;|&nbsp; 차액 <b style="color:${diff<0?'var(--red)':'var(--green)'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))}</b>`:''}
+    ${infoLines}
   `;
   const pays=DB.payments.filter(p=>p.workId===wId).sort((a,b)=>a.date.localeCompare(b.date));
   document.getElementById('pdPayRows').innerHTML=pays.length===0
