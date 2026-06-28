@@ -757,7 +757,7 @@ function fmtW(n) { return Number(n).toLocaleString('ko-KR')+'원'; }
 function fmtDate(s) {
   const {y,m,d}=parsD(s);
   const dow=['일','월','화','수','목','금','토'][dowN(y,m,d)];
-  return `${String(m+1).padStart(2,'0')}.${String(d).padStart(2,'0')} (${dow})`;
+  return `${String(m+1).padStart(2,'0')}.${String(d).padStart(2,'0')}(${dow})`;
 }
 function expAmt(w) { return w.dates.length * Number(w.wage) * Number(w.unit || 1); }
 function rcvAmt(wId) { return DB.payments.filter(p=>p.workId===wId).reduce((s,p)=>s+Number(p.amount),0); }
@@ -766,8 +766,7 @@ function formatDatesShort(dates) {
   if(!dates||dates.length===0) return '';
   const s=[...dates].sort();
   if(s.length===1) return fmtDate(s[0]);
-  const fp=parsD(s[0]), lp=parsD(s[s.length-1]);
-  return `${String(fp.m+1).padStart(2,'0')}.${String(fp.d).padStart(2,'0')} ~ ${String(lp.m+1).padStart(2,'0')}.${String(lp.d).padStart(2,'0')}`;
+  return `${fmtDate(s[0])}~${fmtDate(s[s.length-1])} · ${s.length}일`;
 }
 
 // ── 탭 ──
@@ -1091,7 +1090,7 @@ function renderWork() {
       <div class="witem" style="border-left:4px solid ${c.border}">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
-          <div class="wi-dates">${formatDatesShort(mDates)} · ${mDates.length}일${Number(w.unit||1)!==1?` · ${w.unit}품`:''}</div>
+          <div class="wi-dates">${formatDatesShort(mDates)}${Number(w.unit||1)!==1?` · ${w.unit}품`:''}</div>
           <div class="wi-wage">일당 ${fmtW(w.wage)}${Number(w.unit||1)!==1?` × ${w.unit}품`:''}</div>
           ${badge}
         </div>
@@ -1133,7 +1132,7 @@ function renderPay() {
         <div class="pi-top">
           <div>
             <div class="pi-site">${w.site}</div>
-            <div class="pi-meta">${formatDatesShort(w.dates)} · ${w.dates.length}일</div>
+            <div class="pi-meta">${formatDatesShort(w.dates)}</div>
           </div>
           <div class="pi-right">
             <div class="pi-exp">예상 ${fmtW(exp)}</div>
@@ -1154,7 +1153,7 @@ function openPayDetail(wId) {
   const exp=expAmt(w), rcv=rcvAmt(wId), diff=rcv-exp;
   document.getElementById('pdSite').textContent=w.site;
   document.getElementById('pdInfo').innerHTML=`
-    ${formatDatesShort(w.dates)} · ${w.dates.length}일 · 일당 ${fmtW(w.wage)}<br>
+    ${formatDatesShort(w.dates)} · 일당 ${fmtW(w.wage)}<br>
     예상 <b>${fmtW(exp)}</b> &nbsp;|&nbsp; 수령 <b>${fmtW(rcv)}</b>
     ${diff!==0?` &nbsp;|&nbsp; 차액 <b style="color:${diff<0?'var(--red)':'var(--green)'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))}</b>`:''}
   `;
@@ -1246,7 +1245,7 @@ function renderStat() {
       <div class="witem">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
-          <div class="wi-dates">${mDates.map(d=>fmtDate(d)).join(', ')}</div>
+          <div class="wi-dates">${formatDatesShort(mDates)}</div>
           <div class="wi-wage">일당 ${fmtW(w.wage)}</div>
         </div>
         <div class="wi-total">${fmtW(mDates.length*Number(w.wage))}</div>
