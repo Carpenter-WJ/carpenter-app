@@ -86,23 +86,24 @@
 
     .cal-grid { background:var(--card); }
     .cal-week {
-      border-bottom:1px solid var(--border);
-      display:grid; align-items:start;
-      min-height: clamp(60px, calc((100dvh - 274px) / 6), 95px);
+      position:relative; border-bottom:1px solid var(--border); overflow:hidden;
     }
     .cal-dates { display:grid; grid-template-columns:repeat(7,1fr); }
     .cal-events {
+      position:absolute; top:38px; left:0; right:0;
       display:grid; grid-template-columns:repeat(7,1fr);
-      gap:2px; padding:2px 2px 4px;
+      gap:2px; padding:0 2px; pointer-events:none; z-index:1;
     }
     .cbar {
       height:16px; border-radius:3px; border-left:2px solid;
       padding:0 4px; font-size:9px; font-weight:600;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       display:flex; align-items:center; cursor:pointer; min-width:0;
+      pointer-events:all;
     }
     .ccell {
-      min-height:36px; border-right:1px solid var(--border);
+      min-height: clamp(60px, calc((100dvh - 274px) / 6), 95px);
+      border-right:1px solid var(--border);
       padding:3px 2px; cursor:pointer; overflow:hidden;
     }
     .ccell:nth-child(7n) { border-right:none; }
