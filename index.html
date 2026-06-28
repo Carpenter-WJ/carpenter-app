@@ -274,6 +274,7 @@
     .pd.tod:not(.sel):not(.rng-start) { border:1.5px solid var(--pri); }
     .pd.sun:not(.sel):not(.rng-start):not(.other) { color:var(--red); }
     .pd.sat:not(.sel):not(.rng-start):not(.other) { color:var(--blue); }
+    .pd.holi:not(.sel):not(.rng-start):not(.other) { color:var(--red); }
     .range-hint { text-align:center; font-size:13px; color:var(--muted); padding:8px 12px; background:var(--bg); border-radius:8px; margin-bottom:10px; }
 
     /* 입금 내역 행 */
@@ -449,7 +450,10 @@
 <div class="page" id="page-pay">
   <div id="balArea"></div>
   <div class="sec">
-    <div class="sec-title">현장별 입금 현황 (탭하여 관리)</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="sec-title" style="margin-bottom:0">현장별 입금 현황</div>
+      <div id="hideCompWrap"></div>
+    </div>
     <div class="card" id="pList"></div>
   </div>
 </div>
@@ -463,7 +467,7 @@
   </div>
   <div class="stat-grid" id="statGrid"></div>
   <div class="sec">
-    <div class="sec-title">이번 달 작업 내역</div>
+    <div class="sec-title" id="statSecTitle">이번 달 작업 내역</div>
     <div class="card" id="statWList"></div>
   </div>
 </div>
@@ -771,6 +775,8 @@ let selDate = null;
 let selWorkId = null;
 let editDates = [];
 let editColor = 'orange';
+let hideComp = false;
+function toggleHideComp() { hideComp=!hideComp; renderPay(); }
 
 function toggleInfoSection(force) {
   const body=document.getElementById('infoBody');
@@ -818,7 +824,7 @@ async function loadData() {
 function doSignOut() {
   if (confirm('로그아웃 하시겠습니까?')) auth.signOut();
 }
-function todayStr() { return ymd(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()); }
+function todayStr() { const t=new Date(); return ymd(t.getFullYear(), t.getMonth(), t.getDate()); }
 function ymd(y,m,d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 function parsD(s) { const [y,m,d]=s.split('-').map(Number); return {y,m:m-1,d}; }
 function dowN(y,m,d) { return new Date(y,m,d).getDay(); }
@@ -1070,6 +1076,7 @@ function renderPickCal() {
     if(ds===todStr) cls+=' tod';
     if(wd===0) cls+=' sun';
     if(wd===6) cls+=' sat';
+    if(getHoli(ds)) cls+=' holi';
     if(editDates.includes(ds)) cls+=' already';
     else if(ds===rangeStart) cls+=' rng-start';
     else if(pickSel.includes(ds)) cls+=' sel';
@@ -1208,10 +1215,12 @@ function renderPay() {
       </div>
     </div>`;
 
+  document.getElementById('hideCompWrap').innerHTML=`<button onclick="toggleHideComp()" style="background:${hideComp?'var(--pri)':'none'};color:${hideComp?'#fff':'var(--muted)'};border:1.5px solid ${hideComp?'var(--pri)':'var(--border)'};border-radius:20px;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer;">완납 숨기기</button>`;
+
   const el=document.getElementById('pList');
   if(DB.works.length===0){el.innerHTML='<div class="empty">작업 기록이 없습니다.<br>기록 탭에서 먼저 추가해 주세요.</div>';return;}
 
-  const sorted=[...DB.works].sort((a,b)=>a.isPaid===b.isPaid?0:a.isPaid?1:-1);
+  const sorted=[...DB.works].filter(w=>!hideComp||!w.isPaid).sort((a,b)=>a.isPaid===b.isPaid?0:a.isPaid?1:-1);
   el.innerHTML=sorted.map(w=>{
     const exp=expAmt(w), rcv=rcvAmt(w.id), diff=rcv-exp;
     const badge=w.isPaid
@@ -1334,8 +1343,13 @@ function renderStat() {
       <div class="sl">전체 미수금</div><div class="sv">${fmtW(allOutstanding)}</div>
     </div>`;
 
+  const now=new Date();
+  const isCurStat=statY===now.getFullYear()&&statM===now.getMonth();
+  const statMonthLbl=isCurStat?'이번 달':`${statY}년 ${statM+1}월`;
+  document.getElementById('statSecTitle').textContent=statMonthLbl+' 작업 내역';
+
   const wl=document.getElementById('statWList');
-  if(works.length===0){wl.innerHTML='<div class="empty">이번 달 작업 기록이 없습니다.</div>';return;}
+  if(works.length===0){wl.innerHTML=`<div class="empty">${statMonthLbl} 작업 기록이 없습니다.</div>`;return;}
   wl.innerHTML=works.map(w=>{
     const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;});
     return `
