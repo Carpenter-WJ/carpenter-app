@@ -560,13 +560,18 @@ if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  firebase.auth().signInWithPopup(provider).catch(function(e){
-    if (e.code === 'auth/popup-blocked') {
-      firebase.auth().signInWithRedirect(provider);
-    } else {
-      alert('로그인 오류: ' + e.message);
-    }
-  });
+  var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    firebase.auth().signInWithRedirect(provider);
+  } else {
+    firebase.auth().signInWithPopup(provider).catch(function(e){
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+        firebase.auth().signInWithRedirect(provider);
+      } else {
+        alert('로그인 오류 (' + e.code + ')\n' + e.message);
+      }
+    });
+  }
 }
 </script>
 <script>
@@ -1101,6 +1106,13 @@ auth.getRedirectResult().then(function(result){
   if(result && result.user) console.log('redirect login ok:', result.user.email);
 }).catch(function(e){
   console.error('redirect error', e);
+  var msg = '';
+  if (e.code === 'auth/unauthorized-domain') {
+    msg = '이 도메인은 Firebase에 등록되지 않았습니다.\nFirebase Console → Authentication → Settings → Authorized domains 에\n현재 도메인을 추가해주세요.';
+  } else {
+    msg = '로그인 오류 (' + e.code + ')\n' + e.message;
+  }
+  alert(msg);
 });
 
 auth.onAuthStateChanged(user => {
