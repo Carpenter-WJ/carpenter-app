@@ -359,16 +359,6 @@
     .google-icon { width:22px; height:22px; }
 
     /* 헤더 유저 정보 */
-    .hdr-user { display:flex; align-items:center; gap:8px; margin-top:6px; }
-    .hdr-avatar {
-      width:24px; height:24px; border-radius:50%; object-fit:cover;
-      border:1.5px solid rgba(255,255,255,.5);
-    }
-    .hdr-name { font-size:12px; opacity:.85; }
-    .hdr-logout {
-      background:rgba(255,255,255,.2); border:none; border-radius:20px;
-      color:#fff; font-size:11px; padding:3px 10px; cursor:pointer; margin-left:auto;
-    }
 
     /* 날짜 모달 작업 행 */
     .dm-work {
@@ -429,10 +419,6 @@
 
 <div class="hdr">
   <h1 id="hTit">목수 일지</h1>
-  <div class="hdr-user">
-    <img id="hdrAvatar" class="hdr-avatar" src="" alt="" style="display:none">
-    <span id="hdrName" class="hdr-name"></span>
-  </div>
 </div>
 
 <!-- 달력 탭 -->
@@ -1554,9 +1540,6 @@ auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
     loginScreen.style.display = 'none';
-    const avatar = document.getElementById('hdrAvatar');
-    if (user.photoURL) { avatar.src = user.photoURL; avatar.style.display = 'block'; }
-    document.getElementById('hdrName').textContent = user.displayName || user.email;
     loadData();
   } else {
     currentUser = null;
