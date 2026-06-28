@@ -198,6 +198,14 @@
       box-sizing:border-box; -webkit-appearance:none; appearance:none;
     }
     .fg input:focus { border-color:var(--pri); }
+    .fg select {
+      width:100%; padding:13px 14px; border:1.5px solid var(--border);
+      border-radius:11px; font-size:16px; font-family:inherit;
+      color:var(--text); outline:none; transition:border-color .18s;
+      box-sizing:border-box; -webkit-appearance:none; appearance:none;
+      background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238E8E93' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 14px center;
+    }
+    .fg select:focus { border-color:var(--pri); }
 
     /* 색상 선택 */
     .color-chips { display:flex; flex-wrap:wrap; gap:8px; }
@@ -483,6 +491,21 @@
       <input type="number" id="inWage" placeholder="0" inputmode="numeric">
     </div>
     <div class="fg">
+      <label>품수</label>
+      <select id="inUnit">
+        <option value="0.5">0.5품 — 반나절</option>
+        <option value="1" selected>1품 — 하루</option>
+        <option value="1.5">1.5품</option>
+        <option value="2">2품</option>
+        <option value="2.5">2.5품</option>
+        <option value="3">3품</option>
+        <option value="3.5">3.5품</option>
+        <option value="4">4품</option>
+        <option value="4.5">4.5품</option>
+        <option value="5">5품</option>
+      </select>
+    </div>
+    <div class="fg">
       <label>색상</label>
       <div class="color-chips" id="colorChips"></div>
     </div>
@@ -734,7 +757,7 @@ function fmtDate(s) {
   const dow=['일','월','화','수','목','금','토'][dowN(y,m,d)];
   return `${String(m+1).padStart(2,'0')}.${String(d).padStart(2,'0')} (${dow})`;
 }
-function expAmt(w) { return w.dates.length * Number(w.wage); }
+function expAmt(w) { return w.dates.length * Number(w.wage) * Number(w.unit || 1); }
 function rcvAmt(wId) { return DB.payments.filter(p=>p.workId===wId).reduce((s,p)=>s+Number(p.amount),0); }
 
 function formatDatesShort(dates) {
@@ -775,7 +798,7 @@ function renderCal() {
   let mWage=0;
   DB.works.forEach(w=>{
     const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).length;
-    mWage+=cnt*Number(w.wage);
+    mWage+=cnt*Number(w.wage)*Number(w.unit||1);
   });
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===calY&&d.m===calM;}).reduce((s,p)=>s+Number(p.amount),0);
 
@@ -846,10 +869,11 @@ function openWorkOv(workId, prefillDate) {
   document.getElementById('workOvTitle').textContent=workId?'작업 수정':'작업 추가';
   if(workId){
     const w=DB.works.find(x=>x.id===workId);
-    if(w){ document.getElementById('inSite').value=w.site; document.getElementById('inWage').value=w.wage; editDates=[...w.dates]; editColor=w.color||'orange'; }
+    if(w){ document.getElementById('inSite').value=w.site; document.getElementById('inWage').value=w.wage; document.getElementById('inUnit').value=String(w.unit||1); editDates=[...w.dates]; editColor=w.color||'orange'; }
   } else {
     document.getElementById('inSite').value='';
     document.getElementById('inWage').value='';
+    document.getElementById('inUnit').value='1';
     editColor='orange';
     if(prefillDate) editDates=[prefillDate];
   }
@@ -960,15 +984,16 @@ function confirmDatePick() {
 function saveWork() {
   const site=document.getElementById('inSite').value.trim();
   const wage=Number(document.getElementById('inWage').value);
+  const unit=Number(document.getElementById('inUnit').value);
   const workId=document.getElementById('editWorkId').value;
   if(!site){alert('현장명을 입력해 주세요.');return;}
   if(!wage){alert('일당을 입력해 주세요.');return;}
   if(editDates.length===0){alert('날짜를 1개 이상 추가해 주세요.');return;}
   if(workId){
     const w=DB.works.find(x=>x.id===workId);
-    if(w){w.site=site;w.wage=wage;w.dates=editDates.sort();w.color=editColor;}
+    if(w){w.site=site;w.wage=wage;w.unit=unit;w.dates=editDates.sort();w.color=editColor;}
   } else {
-    DB.works.push({id:Date.now().toString(36),site,wage,dates:editDates.sort(),isPaid:false,color:editColor});
+    DB.works.push({id:Date.now().toString(36),site,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor});
   }
   DB.works.sort((a,b)=>b.dates[b.dates.length-1].localeCompare(a.dates[a.dates.length-1]));
   save(); closeAll();
@@ -998,7 +1023,7 @@ function renderWork() {
   const totalDays=new Set(filtered.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
   const totalWage=filtered.reduce((s,w)=>{
     const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}).length;
-    return s+cnt*Number(w.wage);
+    return s+cnt*Number(w.wage)*Number(w.unit||1);
   },0);
   const isCurMonth=workY===TODAY.getFullYear()&&workM===TODAY.getMonth();
   const monthLbl=isCurMonth?'이번 달':`${workY}년 ${workM+1}월`;
@@ -1016,12 +1041,12 @@ function renderWork() {
       <div class="witem" style="border-left:4px solid ${c.border}">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
-          <div class="wi-dates">${formatDatesShort(mDates)} · ${mDates.length}일</div>
-          <div class="wi-wage">일당 ${fmtW(w.wage)}</div>
+          <div class="wi-dates">${formatDatesShort(mDates)} · ${mDates.length}일${Number(w.unit||1)!==1?` · ${w.unit}품`:''}</div>
+          <div class="wi-wage">일당 ${fmtW(w.wage)}${Number(w.unit||1)!==1?` × ${w.unit}품`:''}</div>
           ${badge}
         </div>
         <div class="wi-right">
-          <div class="wi-total">${fmtW(mDates.length*Number(w.wage))}</div>
+          <div class="wi-total">${fmtW(mDates.length*Number(w.wage)*Number(w.unit||1))}</div>
         </div>
         <button class="wi-del" onclick="delWork('${w.id}')">🗑</button>
       </div>`;
@@ -1142,7 +1167,7 @@ function renderStat() {
   let mWage=0;
   works.forEach(w=>{
     const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
-    mWage+=cnt*Number(w.wage);
+    mWage+=cnt*Number(w.wage)*Number(w.unit||1);
   });
   const workDays=new Set(works.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
