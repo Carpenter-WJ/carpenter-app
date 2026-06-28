@@ -578,7 +578,7 @@ function signIn() {
     firebase.auth().signInWithRedirect(provider);
   } else {
     firebase.auth().signInWithPopup(provider).catch(function(e){
-      if (e.code === 'auth/popup-closed-by-user') return;
+      if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
       alert('로그인 오류 (' + e.code + ')\n' + e.message);
     });
   }
