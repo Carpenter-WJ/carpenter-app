@@ -75,11 +75,22 @@
     .dow-lbl.sun { color:var(--red); }
     .dow-lbl.sat { color:var(--blue); }
 
-    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); background:#fff; }
+    .cal-grid { background:#fff; }
+    .cal-week { border-bottom:1px solid var(--border); }
+    .cal-dates { display:grid; grid-template-columns:repeat(7,1fr); }
+    .cal-events {
+      display:grid; grid-template-columns:repeat(7,1fr);
+      gap:2px; padding:2px 2px 4px;
+    }
+    .cbar {
+      height:16px; border-radius:3px; border-left:2px solid;
+      padding:0 4px; font-size:9px; font-weight:600;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      display:flex; align-items:center; cursor:pointer; min-width:0;
+    }
     .ccell {
-      min-height:72px; border-right:1px solid var(--border);
-      border-bottom:1px solid var(--border); padding:3px 2px;
-      cursor:pointer; overflow:hidden;
+      min-height:44px; border-right:1px solid var(--border);
+      padding:3px 2px; cursor:pointer; overflow:hidden;
     }
     .ccell:nth-child(7n) { border-right:none; }
     .ccell.other { background:#fafafa; }
@@ -94,15 +105,6 @@
     .ccell.today .dnum { background:var(--pri); color:#fff !important; }
     .ccell.sunday:not(.other) .dnum { color:var(--red); }
     .ccell.saturday:not(.other) .dnum { color:var(--blue); }
-
-    .cwrk { margin-top:2px; }
-    .cwitem {
-      background:#fff3e8; border-left:2px solid var(--pri);
-      border-radius:2px; padding:1px 3px; margin-bottom:2px;
-      font-size:9px; color:var(--dark); font-weight:600;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    }
-    .cwmore { font-size:9px; color:var(--muted); padding-left:2px; }
 
     /* 공통 */
     .sec { padding:14px; }
@@ -808,37 +810,81 @@ function renderCal() {
     <div class="cs-item"><div class="cv">${(mPaid/10000).toFixed(0)}만원</div><div class="cl">수령액</div></div>
   `;
 
-  const dateMap={};
-  DB.works.forEach(w=>w.dates.forEach(d=>{if(!dateMap[d])dateMap[d]=[];dateMap[d].push({site:w.site,color:w.color||'orange'});}));
+  // 연속 날짜 구간별 바 계산
+  const bars=[];
+  DB.works.forEach(w=>{
+    const md=w.dates.filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).sort();
+    if(!md.length) return;
+    let rs=md[0], re=md[0];
+    for(let i=1;i<=md.length;i++){
+      if(i<md.length){
+        const a=new Date(re+'T00:00:00'), b=new Date(md[i]+'T00:00:00');
+        if((b-a)/86400000===1){re=md[i];continue;}
+      }
+      bars.push({site:w.site,color:w.color||'orange',startDs:rs,endDs:re});
+      if(i<md.length){rs=md[i];re=md[i];}
+    }
+  });
 
   const firstDow=new Date(calY,calM,1).getDay();
   const dim=new Date(calY,calM+1,0).getDate();
   const diPrev=new Date(calY,calM,0).getDate();
   const todStr=todayStr();
+
+  // 전체 셀 목록 구성
+  const cells=[];
+  for(let i=firstDow-1;i>=0;i--) cells.push({d:diPrev-i,ds:null,other:true});
+  for(let d=1;d<=dim;d++) cells.push({d,ds:ymd(calY,calM,d),other:false});
+  const rem=cells.length%7===0?0:7-cells.length%7;
+  for(let d=1;d<=rem;d++) cells.push({d,ds:null,other:true});
+
   let html='';
+  for(let w=0;w<cells.length/7;w++){
+    const wk=cells.slice(w*7,w*7+7);
 
-  for(let i=firstDow-1;i>=0;i--) html+=`<div class="ccell other"><span class="dnum">${diPrev-i}</span></div>`;
+    // 날짜 숫자 행
+    html+='<div class="cal-week"><div class="cal-dates">';
+    wk.forEach(cell=>{
+      if(cell.other){
+        html+=`<div class="ccell other"><span class="dnum">${cell.d}</span></div>`;
+      } else {
+        const wd=dowN(calY,calM,cell.d);
+        let cls='ccell';
+        if(cell.ds===todStr)cls+=' today';
+        if(wd===0)cls+=' sunday';
+        if(wd===6)cls+=' saturday';
+        html+=`<div class="${cls}" onclick="openDayOv('${cell.ds}')"><span class="dnum">${cell.d}</span></div>`;
+      }
+    });
+    html+='</div>';
 
-  for(let d=1;d<=dim;d++){
-    const ds=ymd(calY,calM,d);
-    const wd=dowN(calY,calM,d);
-    let cls='ccell';
-    if(ds===todStr)cls+=' today';
-    if(wd===0)cls+=' sunday';
-    if(wd===6)cls+=' saturday';
-    const entries=dateMap[ds]||[];
-    let sHtml='';
-    if(entries.length>0){
-      sHtml='<div class="cwrk">';
-      sHtml+=entries.slice(0,2).map(e=>{const c=getColor(e.color);return `<div class="cwitem" style="background:${c.bg};border-left-color:${c.border};color:${c.border}">${e.site}</div>`;}).join('');
-      if(entries.length>2)sHtml+=`<div class="cwmore">+${entries.length-2}</div>`;
-      sHtml+='</div>';
+    // 이 주에 해당하는 이벤트 바 계산
+    const wkBars=[];
+    bars.forEach(bar=>{
+      let cs=-1,ce=-1;
+      wk.forEach((cell,idx)=>{
+        if(!cell.ds) return;
+        if(cell.ds>=bar.startDs&&cell.ds<=bar.endDs){
+          if(cs===-1)cs=idx;
+          ce=idx;
+        }
+      });
+      if(cs===-1) return;
+      wkBars.push({site:bar.site,color:bar.color,colStart:cs,colSpan:ce-cs+1,clickDs:wk[cs].ds});
+    });
+
+    if(wkBars.length){
+      html+='<div class="cal-events">';
+      wkBars.forEach(bar=>{
+        const c=getColor(bar.color);
+        html+=`<div class="cbar" style="grid-column:${bar.colStart+1}/span ${bar.colSpan};background:${c.bg};border-left-color:${c.border};color:${c.border}" onclick="openDayOv('${bar.clickDs}')">${bar.site}</div>`;
+      });
+      html+='</div>';
     }
-    html+=`<div class="${cls}" onclick="openDayOv('${ds}')"><span class="dnum">${d}</span>${sHtml}</div>`;
+
+    html+='</div>';
   }
 
-  const rem=(firstDow+dim)%7===0?0:7-(firstDow+dim)%7;
-  for(let d=1;d<=rem;d++) html+=`<div class="ccell other"><span class="dnum">${d}</span></div>`;
   document.getElementById('calGrid').innerHTML=html;
 }
 
