@@ -1637,17 +1637,18 @@ function moveStat(d) {
 function renderStat() {
   document.getElementById('statLbl').textContent=`${statY}년 ${statM+1}월`;
   const works=DB.works.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
-  let mWage=0, sUnit=0;
+  let mWage=0, mWageBase=0, sUnit=0;
   works.forEach(w=>{
     const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
     const u=Number(w.unit||1);
     mWage+=cnt*Number(w.wage)*u;
+    mWageBase+=cnt*Number(w.wage); // 품수 제외 — 순수 일당 기준
     sUnit+=cnt*u;
   });
   const workDays=new Set(works.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
   const allOutstanding=DB.works.reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
-  const avgWage=workDays>0?Math.round(mWage/workDays):0;
+  const avgWage=workDays>0?Math.round(mWageBase/workDays):0;
   const sUnitStr=sUnit%1===0?sUnit:sUnit.toFixed(1);
 
   const now=new Date();
