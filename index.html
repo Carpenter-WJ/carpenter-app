@@ -1094,19 +1094,6 @@ document.querySelectorAll('.ov').forEach(o=>{
 });
 
 // ── Firebase 인증 상태 감지 ──
-auth.getRedirectResult().then(function(result){
-  if(result && result.user) console.log('redirect login ok:', result.user.email);
-}).catch(function(e){
-  console.error('redirect error', e);
-  var msg = '';
-  if (e.code === 'auth/unauthorized-domain') {
-    msg = '이 도메인은 Firebase에 등록되지 않았습니다.\nFirebase Console → Authentication → Settings → Authorized domains 에\n현재 도메인을 추가해주세요.';
-  } else {
-    msg = '로그인 오류 (' + e.code + ')\n' + e.message;
-  }
-  alert(msg);
-});
-
 auth.onAuthStateChanged(user => {
   const loginScreen = document.getElementById('loginScreen');
   if (user) {
