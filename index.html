@@ -794,25 +794,47 @@ function renderColorChips() {
 function selectColor(id) { editColor=id; renderColorChips(); }
 
 async function save() {
-  localStorage.setItem('moksujilji2', JSON.stringify(DB)); // 로컬 캐시
-  if (currentUser) {
-    try {
-      await fsdb.collection('users').doc(currentUser.uid).set(DB);
-    } catch(e) { console.error('저장 오류:', e); }
-  }
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  if (!currentUser) return;
+  try {
+    const ref = fsdb.collection('users').doc(currentUser.uid);
+    const batch = fsdb.batch();
+    DB.works.forEach(w => batch.set(ref.collection('works').doc(w.id), w));
+    DB.payments.forEach(p => batch.set(ref.collection('payments').doc(p.id), p));
+    await batch.commit();
+  } catch(e) { console.error('저장 오류:', e); }
 }
 
 async function loadData() {
   try {
-    const doc = await fsdb.collection('users').doc(currentUser.uid).get();
-    if (doc.exists) {
-      DB = doc.data();
-      if (!DB.works) DB.works = [];
-      if (!DB.payments) DB.payments = [];
+    const ref = fsdb.collection('users').doc(currentUser.uid);
+    const [worksSnap, paysSnap] = await Promise.all([
+      ref.collection('works').get(),
+      ref.collection('payments').get()
+    ]);
+
+    if (!worksSnap.empty || !paysSnap.empty) {
+      // 서브컬렉션 방식으로 로드
+      DB.works = worksSnap.docs.map(d => d.data());
+      DB.payments = paysSnap.docs.map(d => d.data());
+      localStorage.setItem('moksujilji2', JSON.stringify(DB));
     } else {
-      // 기존 로컬 데이터 마이그레이션
-      const local = localStorage.getItem('moksujilji2');
-      if (local) { DB = JSON.parse(local); await save(); }
+      // 기존 단일문서 방식 → 서브컬렉션으로 마이그레이션
+      const oldDoc = await ref.get();
+      if (oldDoc.exists && (oldDoc.data().works || oldDoc.data().payments)) {
+        const old = oldDoc.data();
+        DB.works = old.works || [];
+        DB.payments = old.payments || [];
+        await save(); // 서브컬렉션에 저장
+        await ref.update({ // 구 데이터 정리
+          works: firebase.firestore.FieldValue.delete(),
+          payments: firebase.firestore.FieldValue.delete()
+        });
+      } else {
+        // 로컬 데이터 마이그레이션 (최초 로그인)
+        const local = localStorage.getItem('moksujilji2');
+        if (local) { DB = JSON.parse(local); await save(); }
+      }
     }
   } catch(e) {
     const local = localStorage.getItem('moksujilji2');
@@ -1149,11 +1171,20 @@ function saveWork() {
   else if(curTab==='pay')renderPay();
 }
 
-function delWork(id) {
+async function delWork(id) {
   if(!confirm('이 현장 기록을 삭제하시겠습니까?\n관련 입금 내역도 함께 삭제됩니다.'))return;
+  if (currentUser) {
+    try {
+      const ref = fsdb.collection('users').doc(currentUser.uid);
+      const batch = fsdb.batch();
+      batch.delete(ref.collection('works').doc(id));
+      DB.payments.filter(p=>p.workId===id).forEach(p=>batch.delete(ref.collection('payments').doc(p.id)));
+      await batch.commit();
+    } catch(e) { console.error('삭제 오류:', e); }
+  }
   DB.works=DB.works.filter(w=>w.id!==id);
   DB.payments=DB.payments.filter(p=>p.workId!==id);
-  save();
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
   if(curTab==='cal')renderCal();
   else if(curTab==='work')renderWork();
   else if(curTab==='pay')renderPay();
@@ -1305,10 +1336,16 @@ function savePayment() {
   save(); closeOv('addPayOv'); openPayDetail(selWorkId); renderPay();
 }
 
-function delPay(id) {
+async function delPay(id) {
   if(!confirm('이 입금 내역을 삭제하시겠습니까?'))return;
+  if (currentUser) {
+    try {
+      await fsdb.collection('users').doc(currentUser.uid).collection('payments').doc(id).delete();
+    } catch(e) { console.error('삭제 오류:', e); }
+  }
   DB.payments=DB.payments.filter(p=>p.id!==id);
-  save(); openPayDetail(selWorkId); renderPay();
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  openPayDetail(selWorkId); renderPay();
 }
 
 // ── 통계 ──
