@@ -199,6 +199,16 @@
     }
     .fg input:focus { border-color:var(--pri); }
 
+    /* 색상 선택 */
+    .color-chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .cchip {
+      width:32px; height:32px; border-radius:50%; cursor:pointer;
+      border:3px solid transparent; transition:transform .15s, border-color .15s;
+      flex-shrink:0;
+    }
+    .cchip:active { transform:scale(.9); }
+    .cchip.on { border-color:var(--text); transform:scale(1.15); }
+
     /* 날짜 칩 */
     .date-chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; min-height:36px; }
     .dchip {
@@ -473,6 +483,10 @@
       <input type="number" id="inWage" placeholder="0" inputmode="numeric">
     </div>
     <div class="fg">
+      <label>색상</label>
+      <div class="color-chips" id="colorChips"></div>
+    </div>
+    <div class="fg">
       <label id="dateLabel">일한 날짜</label>
       <div class="date-chips" id="dateChips"></div>
       <button class="add-date-btn" onclick="openDatePickOv()">+ 날짜 추가</button>
@@ -648,6 +662,18 @@ const auth = firebase.auth();
 const fsdb = firebase.firestore();
 fsdb.enablePersistence({synchronizeTabs:true}).catch(function(){});
 
+const WORK_COLORS = [
+  { id:'orange', bg:'#fff3e8', border:'#E67E22' },
+  { id:'red',    bg:'#fff0ee', border:'#FF3B30' },
+  { id:'blue',   bg:'#e8f0ff', border:'#007AFF' },
+  { id:'green',  bg:'#e8f8ed', border:'#34C759' },
+  { id:'purple', bg:'#f3e8ff', border:'#9B59B6' },
+  { id:'pink',   bg:'#ffe8f6', border:'#FF2D92' },
+  { id:'teal',   bg:'#e8f8f8', border:'#1ABC9C' },
+  { id:'gray',   bg:'#f0f0f0', border:'#8E8E93' },
+];
+function getColor(id) { return WORK_COLORS.find(c=>c.id===id) || WORK_COLORS[0]; }
+
 let currentUser = null;
 let DB = { works: [], payments: [] };
 const TODAY = new Date();
@@ -658,6 +684,14 @@ let curTab = 'cal';
 let selDate = null;
 let selWorkId = null;
 let editDates = [];
+let editColor = 'orange';
+
+function renderColorChips() {
+  document.getElementById('colorChips').innerHTML = WORK_COLORS.map(c =>
+    `<div class="cchip${editColor===c.id?' on':''}" style="background:${c.border}" onclick="selectColor('${c.id}')"></div>`
+  ).join('');
+}
+function selectColor(id) { editColor=id; renderColorChips(); }
 
 async function save() {
   localStorage.setItem('moksujilji2', JSON.stringify(DB)); // 로컬 캐시
@@ -752,7 +786,7 @@ function renderCal() {
   `;
 
   const dateMap={};
-  DB.works.forEach(w=>w.dates.forEach(d=>{if(!dateMap[d])dateMap[d]=[];dateMap[d].push(w.site);}));
+  DB.works.forEach(w=>w.dates.forEach(d=>{if(!dateMap[d])dateMap[d]=[];dateMap[d].push({site:w.site,color:w.color||'orange'});}));
 
   const firstDow=new Date(calY,calM,1).getDay();
   const dim=new Date(calY,calM+1,0).getDate();
@@ -769,12 +803,12 @@ function renderCal() {
     if(ds===todStr)cls+=' today';
     if(wd===0)cls+=' sunday';
     if(wd===6)cls+=' saturday';
-    const sites=dateMap[ds]||[];
+    const entries=dateMap[ds]||[];
     let sHtml='';
-    if(sites.length>0){
+    if(entries.length>0){
       sHtml='<div class="cwrk">';
-      sHtml+=sites.slice(0,2).map(s=>`<div class="cwitem">${s}</div>`).join('');
-      if(sites.length>2)sHtml+=`<div class="cwmore">+${sites.length-2}</div>`;
+      sHtml+=entries.slice(0,2).map(e=>{const c=getColor(e.color);return `<div class="cwitem" style="background:${c.bg};border-left-color:${c.border};color:${c.border}">${e.site}</div>`;}).join('');
+      if(entries.length>2)sHtml+=`<div class="cwmore">+${entries.length-2}</div>`;
       sHtml+='</div>';
     }
     html+=`<div class="${cls}" onclick="openDayOv('${ds}')"><span class="dnum">${d}</span>${sHtml}</div>`;
@@ -812,12 +846,14 @@ function openWorkOv(workId, prefillDate) {
   document.getElementById('workOvTitle').textContent=workId?'작업 수정':'작업 추가';
   if(workId){
     const w=DB.works.find(x=>x.id===workId);
-    if(w){ document.getElementById('inSite').value=w.site; document.getElementById('inWage').value=w.wage; editDates=[...w.dates]; }
+    if(w){ document.getElementById('inSite').value=w.site; document.getElementById('inWage').value=w.wage; editDates=[...w.dates]; editColor=w.color||'orange'; }
   } else {
     document.getElementById('inSite').value='';
     document.getElementById('inWage').value='';
+    editColor='orange';
     if(prefillDate) editDates=[prefillDate];
   }
+  renderColorChips();
   renderDateChips();
   openOv('workOv');
 }
@@ -930,9 +966,9 @@ function saveWork() {
   if(editDates.length===0){alert('날짜를 1개 이상 추가해 주세요.');return;}
   if(workId){
     const w=DB.works.find(x=>x.id===workId);
-    if(w){w.site=site;w.wage=wage;w.dates=editDates.sort();}
+    if(w){w.site=site;w.wage=wage;w.dates=editDates.sort();w.color=editColor;}
   } else {
-    DB.works.push({id:Date.now().toString(36),site,wage,dates:editDates.sort(),isPaid:false});
+    DB.works.push({id:Date.now().toString(36),site,wage,dates:editDates.sort(),isPaid:false,color:editColor});
   }
   DB.works.sort((a,b)=>b.dates[b.dates.length-1].localeCompare(a.dates[a.dates.length-1]));
   save(); closeAll();
@@ -975,8 +1011,9 @@ function renderWork() {
       ?'<span class="wi-badge badge-paid">완납</span>'
       :(rcv>0?'<span class="wi-badge badge-partial">부분입금</span>':'<span class="wi-badge badge-unpaid">미입금</span>');
     const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;});
+    const c=getColor(w.color||'orange');
     return `
-      <div class="witem">
+      <div class="witem" style="border-left:4px solid ${c.border}">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
           <div class="wi-dates">${formatDatesShort(mDates)} · ${mDates.length}일</div>
