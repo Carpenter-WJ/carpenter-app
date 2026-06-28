@@ -1181,7 +1181,7 @@ function renderWork() {
       <div class="witem" style="border-left:4px solid ${c.border}">
         <div class="wi-main">
           <div class="wi-site">${w.site}</div>
-          <div class="wi-dates">${formatDatesShort(mDates)}${Number(w.unit||1)!==1?` · ${w.unit}품`:''}</div>
+          <div class="wi-dates">${formatDatesShort(mDates)} · ${Number(w.unit||1)}품</div>
           <div class="wi-wage">일당 ${fmtW(w.wage)}${Number(w.unit||1)!==1?` × ${w.unit}품`:''}</div>
           ${badge}
         </div>
