@@ -576,6 +576,10 @@ function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider).catch(function(e){
     if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+    if (e.code === 'auth/popup-blocked') {
+      firebase.auth().signInWithRedirect(provider);
+      return;
+    }
     alert('로그인 오류 (' + e.code + ')\n' + e.message);
   });
 }
@@ -1144,6 +1148,11 @@ document.querySelectorAll('.ov').forEach(o=>{
 });
 
 // ── Firebase 인증 상태 감지 ──
+auth.getRedirectResult().catch(function(e){
+  if (!e || !e.message || e.message.includes('missing initial state')) return;
+  alert('로그인 오류 (' + e.code + ')\n' + e.message);
+});
+
 auth.onAuthStateChanged(user => {
   const loginScreen = document.getElementById('loginScreen');
   if (user) {
