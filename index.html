@@ -345,7 +345,7 @@
   <div class="login-icon">🔨</div>
   <div class="login-title">목수 일지</div>
   <div class="login-sub">현장 작업 및 임금 관리</div>
-  <button class="google-btn" onclick="signIn()">
+  <button class="google-btn" onclick="signIn()" id="loginBtn">
     <svg class="google-icon" viewBox="0 0 48 48">
       <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.4 2.7 13.3l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/>
       <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 6.9-9.9 7.1-17z"/>
@@ -354,6 +354,15 @@
     </svg>
     Google로 로그인
   </button>
+  <div id="iosStandaloneHint" style="display:none;margin-top:20px;font-size:13px;opacity:.75;text-align:center;line-height:1.8;">
+    아이폰 앱에서 재로그인이 필요하면<br>
+    Safari로 열어서 로그인해주세요
+    <br><br>
+    <button onclick="window.open(location.href,'_blank')" style="background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.5);border-radius:10px;color:#fff;padding:10px 20px;font-size:13px;cursor:pointer;">
+      Safari로 열기
+    </button>
+  </div>
+  <div id="installBanner" style="margin-top:28px;width:100%;"></div>
 </div>
 
 <div class="hdr">
@@ -558,10 +567,14 @@ const firebaseConfig = {
 };
 if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 
+var _isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+var _isAndroid = /Android/i.test(navigator.userAgent);
+var _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+var _deferredPrompt = null;
+
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  if (isStandalone) {
+  if (_isStandalone && _isAndroid) {
     firebase.auth().signInWithRedirect(provider);
   } else {
     firebase.auth().signInWithPopup(provider).catch(function(e){
@@ -570,6 +583,43 @@ function signIn() {
     });
   }
 }
+
+function installApp() {
+  if (_deferredPrompt) {
+    _deferredPrompt.prompt();
+    _deferredPrompt.userChoice.then(function(){ _deferredPrompt = null; document.getElementById('installBanner').innerHTML = ''; });
+  }
+}
+
+function showIOSInstallGuide() {
+  alert('홈 화면에 추가하는 방법\n\n① 하단 공유 버튼 (□↑) 탭\n② "홈 화면에 추가" 선택\n③ 오른쪽 위 "추가" 탭\n\n앱처럼 사용할 수 있습니다!');
+}
+
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  _deferredPrompt = e;
+  if (!_isStandalone) {
+    document.getElementById('installBanner').innerHTML =
+      '<button onclick="installApp()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.5);border-radius:12px;color:#fff;padding:13px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">📲 홈 화면에 앱 추가</button>';
+  }
+});
+
+window.addEventListener('appinstalled', function() {
+  document.getElementById('installBanner').innerHTML = '';
+  _deferredPrompt = null;
+});
+
+(function initInstallUI() {
+  if (_isStandalone) return;
+  if (_isIOS) {
+    document.getElementById('installBanner').innerHTML =
+      '<button onclick="showIOSInstallGuide()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.5);border-radius:12px;color:#fff;padding:13px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">📲 홈 화면에 앱 추가하는 방법</button>';
+  }
+  if (_isIOS && _isStandalone) {
+    document.getElementById('iosStandaloneHint').style.display = 'block';
+    document.getElementById('loginBtn').style.display = 'none';
+  }
+})()
 </script>
 <script>
 // ── Firebase 참조 ──
