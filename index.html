@@ -1500,7 +1500,7 @@ function renderPay() {
     const exp=expAmt(w), rcv=rcvAmt(w.id), diff=rcv-exp;
     const c=getColor(w.color||'orange');
     const badge=w.isPaid
-      ?'<span class="wi-badge badge-paid" style="font-size:11px">완납</span>'
+      ?'<span class="wi-badge badge-paid" style="font-size:11px">정산완료</span>'
       :(rcv>0?'<span class="wi-badge badge-partial" style="font-size:11px">부분정산</span>':'<span class="wi-badge badge-unpaid" style="font-size:11px">미정산</span>');
     const diffHtml=diff===0?'':`<div class="pi-diff ${diff<0?'minus':'plus'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))} ${diff<0?'덜 받음':'더 받음'}</div>`;
     return `
