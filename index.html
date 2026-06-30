@@ -1717,7 +1717,11 @@ function openOv(id){document.getElementById(id).classList.add('show');}
 function closeOv(id){document.getElementById(id).classList.remove('show');}
 function closeAll(){document.querySelectorAll('.ov').forEach(o=>o.classList.remove('show'));}
 document.querySelectorAll('.ov').forEach(o=>{
-  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('show');});
+  o.addEventListener('click',e=>{
+    if(e.target!==o) return;
+    if(o.id==='datePickOv') closeDatePickOv();
+    else o.classList.remove('show');
+  });
 });
 
 // ── Firebase 인증 상태 감지 ──
