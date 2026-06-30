@@ -35,7 +35,17 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.leaderUid == request.auth.uid
         && request.resource.data.memberCount == 1;
-      allow update: if isTeamLeader(teamId, request.auth.uid);
+      // update: 팀장은 전체 필드 수정 가능. 그 외엔 "초대 코드로 막 합류하는
+      // 본인"이 같은 트랜잭션에서 memberCount 필드만 +1 하는 경우만 허용
+      // (가입 트랜잭션이 본인 멤버 문서를 만들면서 정원 카운트도 함께 올려야 하는데,
+      // 그 시점엔 아직 팀장이 아니므로 별도 예외가 필요함).
+      allow update: if isTeamLeader(teamId, request.auth.uid)
+        || (
+          request.auth != null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
+          && request.resource.data.memberCount == resource.data.memberCount + 1
+          && existsAfter(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid))
+        );
       allow delete: if false;
 
       match /members/{memberUid} {
