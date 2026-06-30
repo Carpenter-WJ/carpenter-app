@@ -71,23 +71,28 @@ service cloud.firestore {
         allow delete: if isTeamLeader(teamId, request.auth.uid);
       }
 
+      // jobs = 현장 정보(주소/연락처/메모 등)만 보관하는 공유 마스터 문서.
+      // 같은 현장에 여러 명이 갈 수 있으므로 날짜/일당은 두지 않고 wages에서 jobId로 참조한다.
       match /jobs/{jobId} {
         allow read: if isTeamMember(teamId, request.auth.uid);
         allow create: if isTeamMember(teamId, request.auth.uid)
           && request.resource.data.createdBy == request.auth.uid;
-        // 현장 정보는 팀원 누구나 수정 가능. 삭제는 연쇄적으로 wages/payments까지
-        // 함께 지워야 하는데 그 문서들은 리더/작성자만 쓸 수 있으므로 삭제 권한도
-        // 동일하게 맞춰 cascade 실패를 방지한다.
+        // 현장 정보는 팀원 누구나 수정 가능.
         allow update: if isTeamMember(teamId, request.auth.uid);
+        // 삭제는 만든 사람/리더만. (다른 사람의 wages가 이 현장을 참조 중일 수 있으므로
+        // 앱에서는 작업 기록 삭제 시 jobs 문서는 건드리지 않고 그대로 둔다.)
         allow delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
       }
 
-      match /wages/{jobId} {
+      // wages = 개인별 근무기록(날짜/품/일당). jobId로 현장(jobs)을 가리키며,
+      // 같은 jobId를 여러 명의 wages 문서가 함께 참조할 수 있다.
+      match /wages/{wageId} {
         allow read: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
         allow create: if isTeamMember(teamId, request.auth.uid)
-          && request.resource.data.createdBy == request.auth.uid;
+          && request.resource.data.createdBy == request.auth.uid
+          && exists(/databases/$(database)/documents/teams/$(teamId)/jobs/$(request.resource.data.jobId));
         allow update, delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
       }
@@ -95,12 +100,12 @@ service cloud.firestore {
       match /payments/{paymentId} {
         allow read: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
-        // 정산 기록은 본인(현장 작성자)뿐 아니라 팀장이 대신 입력하는 경우가 많으므로,
-        // createdBy는 항상 "현장(jobs)의 작성자"와 일치해야 하고, 쓰는 사람은
-        // 그 현장 작성자 본인이거나 팀장이어야 한다.
+        // 정산 기록은 본인(근무기록 작성자)뿐 아니라 팀장이 대신 입력하는 경우가 많으므로,
+        // createdBy는 항상 "근무기록(wages)의 작성자"와 일치해야 하고, 쓰는 사람은
+        // 그 작성자 본인이거나 팀장이어야 한다.
         allow create: if isTeamMember(teamId, request.auth.uid)
           && request.resource.data.createdBy ==
-             get(/databases/$(database)/documents/teams/$(teamId)/jobs/$(request.resource.data.jobId)).data.createdBy
+             get(/databases/$(database)/documents/teams/$(teamId)/wages/$(request.resource.data.wageId)).data.createdBy
           && (isTeamLeader(teamId, request.auth.uid) || request.auth.uid == request.resource.data.createdBy);
         allow update, delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
