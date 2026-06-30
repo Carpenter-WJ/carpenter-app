@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── 기존 개인(솔로) 데이터 — 변경 없음 ──
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /works/{workId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+      match /payments/{payId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // ── 초대 코드 조회용 최상위 컬렉션 ──
+    match /inviteCodes/{code} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null
+        && isTeamLeader(request.resource.data.teamId, request.auth.uid);
+      allow update: if request.auth != null
+        && isTeamLeader(resource.data.teamId, request.auth.uid);
+      allow delete: if false;
+    }
+
+    // ── 팀 ──
+    match /teams/{teamId} {
+      allow read: if isTeamMember(teamId, request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.leaderUid == request.auth.uid
+        && request.resource.data.memberCount == 1;
+      allow update: if isTeamLeader(teamId, request.auth.uid);
+      allow delete: if false;
+
+      match /members/{memberUid} {
+        allow read: if isTeamMember(teamId, request.auth.uid);
+
+        allow create: if request.auth != null && request.auth.uid == memberUid
+          && (
+            // 팀 생성 시 리더 본인 멤버 문서 생성
+            (request.resource.data.role == 'leader'
+              && get(/databases/$(database)/documents/teams/$(teamId)).data.leaderUid == memberUid)
+            ||
+            // 초대 코드로 일반 가입 (정원 확인)
+            (request.resource.data.role == 'member'
+              && get(/databases/$(database)/documents/teams/$(teamId)).data.memberCount
+                 < get(/databases/$(database)/documents/teams/$(teamId)).data.maxMembers)
+          );
+
+        allow update: if isTeamLeader(teamId, request.auth.uid);
+        allow delete: if isTeamLeader(teamId, request.auth.uid);
+      }
+
+      match /jobs/{jobId} {
+        allow read: if isTeamMember(teamId, request.auth.uid);
+        allow create: if isTeamMember(teamId, request.auth.uid)
+          && request.resource.data.createdBy == request.auth.uid;
+        // 현장 정보는 팀원 누구나 수정 가능. 삭제는 연쇄적으로 wages/payments까지
+        // 함께 지워야 하는데 그 문서들은 리더/작성자만 쓸 수 있으므로 삭제 권한도
+        // 동일하게 맞춰 cascade 실패를 방지한다.
+        allow update: if isTeamMember(teamId, request.auth.uid);
+        allow delete: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+      }
+
+      match /wages/{jobId} {
+        allow read: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+        allow create: if isTeamMember(teamId, request.auth.uid)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update, delete: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+      }
+
+      match /payments/{paymentId} {
+        allow read: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+        // 정산 기록은 본인(현장 작성자)뿐 아니라 팀장이 대신 입력하는 경우가 많으므로,
+        // createdBy는 항상 "현장(jobs)의 작성자"와 일치해야 하고, 쓰는 사람은
+        // 그 현장 작성자 본인이거나 팀장이어야 한다.
+        allow create: if isTeamMember(teamId, request.auth.uid)
+          && request.resource.data.createdBy ==
+             get(/databases/$(database)/documents/teams/$(teamId)/jobs/$(request.resource.data.jobId)).data.createdBy
+          && (isTeamLeader(teamId, request.auth.uid) || request.auth.uid == request.resource.data.createdBy);
+        allow update, delete: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+      }
+    }
+
+    function isTeamMember(teamId, uid) {
+      return uid != null &&
+        exists(/databases/$(database)/documents/teams/$(teamId)/members/$(uid));
+    }
+    function isTeamLeader(teamId, uid) {
+      return uid != null &&
+        get(/databases/$(database)/documents/teams/$(teamId)).data.leaderUid == uid;
+    }
+  }
+}
