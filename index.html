@@ -1223,11 +1223,11 @@ async function createTeam() {
     } catch (innerErr) {
       console.error('팀 생성 중 오류:', innerErr);
       await userRef.update({ teamId: firebase.firestore.FieldValue.delete() }).catch(() => {});
-      alert('팀 생성 중 오류가 발생했습니다. 다시 시도해주세요.');
+      alert(`팀 생성 중 오류가 발생했습니다.\n${innerErr.code || ''} ${innerErr.message || innerErr}`);
     }
   } catch (e) {
     if (e.message === 'ALREADY_IN_TEAM') alert('이미 팀에 속해 있습니다.');
-    else { console.error(e); alert('팀 생성 중 오류가 발생했습니다.'); }
+    else { console.error(e); alert(`팀 생성 중 오류가 발생했습니다.\n${e.code || ''} ${e.message || e}`); }
   } finally {
     btn.disabled = false;
   }
@@ -1285,7 +1285,7 @@ async function joinTeamByCode() {
       TEAM_FULL: '팀 정원이 가득 찼습니다.',
       ALREADY_MEMBER: '이미 이 팀의 멤버입니다.'
     };
-    alert(msgs[e.message] || '참여 중 오류가 발생했습니다.');
+    alert(msgs[e.message] || `참여 중 오류가 발생했습니다.\n${e.code || ''} ${e.message || e}`);
     console.error(e);
   } finally {
     btn.disabled = false;
