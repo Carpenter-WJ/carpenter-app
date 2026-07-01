@@ -1054,6 +1054,7 @@ applyTheme();
 
 // ── 기본 일당 ──
 let defaultWage = localStorage.getItem('defaultWage') || '';
+let userDisplayName = ''; // 사용자 설정 닉네임 (구글 이름과 별개)
 function saveDefWage(v) { defaultWage = v; localStorage.setItem('defaultWage', v); }
 
 // ── 설정 탭 렌더 ──
@@ -1072,8 +1073,11 @@ function renderSet() {
     card.innerHTML = `
       <div class="set-profile">
         ${avatar}
-        <div>
-          <div class="set-profile-name">${currentUser.displayName||'사용자'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="set-profile-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${userDisplayName||'이름 없음'}</div>
+            <button onclick="editDisplayName()" style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer">수정</button>
+          </div>
           <div class="set-profile-email">${currentUser.email||''}</div>
         </div>
       </div>`;
@@ -1088,6 +1092,25 @@ function renderColorChips() {
   ).join('');
 }
 function selectColor(id) { editColor=id; renderColorChips(); }
+
+async function editDisplayName() {
+  const newName = prompt('이름(닉네임)을 입력해주세요', userDisplayName);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) { alert('이름을 입력해주세요.'); return; }
+  if (trimmed.length > 20) { alert('20자 이내로 입력해주세요.'); return; }
+  try {
+    const userRef = fsdb.collection('users').doc(currentUser.uid);
+    await userRef.set({ customName: trimmed }, { merge: true });
+    userDisplayName = trimmed;
+    // 팀 멤버 문서도 업데이트 (팀에 속해 있으면)
+    if (dataMode === 'team' && activeTeamId) {
+      teamRef().collection('members').doc(currentUser.uid).update({ displayName: trimmed }).catch(()=>{});
+    }
+    renderSet();
+    showToast('이름이 변경되었습니다.');
+  } catch(e) { console.error(e); alert('이름 변경에 실패했습니다.'); }
+}
 
 // ── 팀 모드 헬퍼 ──
 function teamRef() { return fsdb.collection('teams').doc(activeTeamId); }
@@ -1196,6 +1219,14 @@ async function loadData() {
   try {
     const userRef = fsdb.collection('users').doc(currentUser.uid);
     const userDoc = await userRef.get();
+    // 닉네임 로드 — customName 우선, 없으면 구글 이름으로 초기화
+    const savedName = userDoc.exists ? userDoc.data().customName : null;
+    if (savedName) {
+      userDisplayName = savedName;
+    } else {
+      userDisplayName = currentUser.displayName || '';
+      if (userDisplayName) userRef.set({ customName: userDisplayName }, { merge: true });
+    }
     const teamId = userDoc.exists ? userDoc.data().teamId : null;
 
     if (teamId) {
@@ -1434,7 +1465,7 @@ async function createTeam() {
       });
       await teamDoc.collection('members').doc(currentUser.uid).set({
         uid: currentUser.uid, role: 'leader',
-        displayName: currentUser.displayName || '', photoURL: currentUser.photoURL || '',
+        displayName: userDisplayName || currentUser.displayName || '', photoURL: currentUser.photoURL || '',
         joinedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       await fsdb.collection('inviteCodes').doc(code).set({
@@ -1486,7 +1517,7 @@ async function joinTeamByCode() {
     // 직접 합류 대신 가입 신청서 생성
     await fsdb.collection('teams').doc(tId).collection('joinRequests').doc(currentUser.uid).set({
       uid: currentUser.uid,
-      displayName: currentUser.displayName || '',
+      displayName: userDisplayName || currentUser.displayName || '',
       photoURL: currentUser.photoURL || '',
       message: msg,
       status: 'pending',
