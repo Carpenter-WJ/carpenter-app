@@ -1109,18 +1109,20 @@ async function loadTeamData() {
   // 팀원은 ownerUid가 본인인 wages만 조회 (리더는 전체)
   const wagesQuery = isLeader ? t.collection('wages') : t.collection('wages').where('ownerUid', '==', myUid);
   const paysQuery = isLeader ? t.collection('payments') : t.collection('payments').where('createdBy', '==', myUid);
-  const notifQuery = t.collection('notifications').where('toUid', '==', myUid).where('isRead', '==', false);
-  // 팀원은 Firestore 쿼리 레벨에서 visibility 필터링 필요
-  // (필터 없는 jobs.get()은 private 문서 때문에 permission-denied로 전체 실패)
   const jobsQuery = isLeader
     ? [t.collection('jobs').get()]
     : [
         t.collection('jobs').where('visibility', '==', 'all').get(),
         t.collection('jobs').where('visibility', '==', 'selected').where('sharedWith', 'array-contains', myUid).get()
       ];
-  const [jobsResults, wagesSnap, paysSnap, membersSnap, notifSnap] = await Promise.all([
-    Promise.all(jobsQuery), wagesQuery.get(), paysQuery.get(), t.collection('members').get(), notifQuery.get()
+  const [jobsResults, wagesSnap, paysSnap, membersSnap] = await Promise.all([
+    Promise.all(jobsQuery), wagesQuery.get(), paysQuery.get(), t.collection('members').get()
   ]);
+  // notifications는 복합 인덱스가 필요해 별도 try-catch로 분리 (인덱스 빌드 중일 때 실패해도 나머지 데이터 유지)
+  let notifSnap = { docs: [] };
+  try {
+    notifSnap = await t.collection('notifications').where('toUid', '==', myUid).where('isRead', '==', false).get();
+  } catch(e) { console.warn('알림 로드 실패 (인덱스 빌드 중일 수 있음):', e.message); }
   const jobById = {};
   const allJobDocs = jobsResults.flatMap(snap => snap.docs);
   DB.jobs = allJobDocs.map(d => {
@@ -1183,7 +1185,10 @@ async function loadData() {
   } catch(e) {
     console.error('데이터 로드 오류:', e);
     const local = localStorage.getItem('moksujilji2');
-    if (local) DB = JSON.parse(local);
+    if (local) {
+      const parsed = JSON.parse(local);
+      DB = { works: parsed.works||[], payments: parsed.payments||[], jobs: parsed.jobs||[], notifications: parsed.notifications||[] };
+    }
   }
   renderCal();
   setTimeout(showOnboard, 600);
