@@ -1110,22 +1110,24 @@ async function loadTeamData() {
   const wagesQuery = isLeader ? t.collection('wages') : t.collection('wages').where('ownerUid', '==', myUid);
   const paysQuery = isLeader ? t.collection('payments') : t.collection('payments').where('createdBy', '==', myUid);
   const notifQuery = t.collection('notifications').where('toUid', '==', myUid).where('isRead', '==', false);
-  const [jobsSnap, wagesSnap, paysSnap, membersSnap, notifSnap] = await Promise.all([
-    t.collection('jobs').get(), wagesQuery.get(), paysQuery.get(), t.collection('members').get(), notifQuery.get()
+  // 팀원은 Firestore 쿼리 레벨에서 visibility 필터링 필요
+  // (필터 없는 jobs.get()은 private 문서 때문에 permission-denied로 전체 실패)
+  const jobsQuery = isLeader
+    ? [t.collection('jobs').get()]
+    : [
+        t.collection('jobs').where('visibility', '==', 'all').get(),
+        t.collection('jobs').where('visibility', '==', 'selected').where('sharedWith', 'array-contains', myUid).get()
+      ];
+  const [jobsResults, wagesSnap, paysSnap, membersSnap, notifSnap] = await Promise.all([
+    Promise.all(jobsQuery), wagesQuery.get(), paysQuery.get(), t.collection('members').get(), notifQuery.get()
   ]);
   const jobById = {};
-  // 팀원은 visibility='private' 현장과 visibility='selected'이면서 sharedWith에 없는 현장 제외
-  DB.jobs = jobsSnap.docs.reduce((arr, d) => {
+  const allJobDocs = jobsResults.flatMap(snap => snap.docs);
+  DB.jobs = allJobDocs.map(d => {
     const j = { id: d.id, ...d.data() };
-    if (!isLeader) {
-      const vis = j.visibility || 'all';
-      if (vis === 'private') return arr;
-      if (vis === 'selected' && !(j.sharedWith || []).includes(myUid)) return arr;
-    }
     jobById[j.id] = j;
-    arr.push(j);
-    return arr;
-  }, []);
+    return j;
+  });
   DB.works = wagesSnap.docs.map(d => {
     const wg = d.data();
     const job = jobById[wg.jobId] || {};
@@ -2256,7 +2258,7 @@ function savePayment() {
   if(!date||!amount){alert('날짜와 금액을 입력해 주세요.');return;}
   const w=DB.works.find(x=>x.id===selWorkId);
   const pay={id:Date.now().toString(36),workId:selWorkId,date,amount,note};
-  if(dataMode==='team') pay.createdBy=w?w.createdBy:currentUser.uid;
+  if(dataMode==='team') pay.createdBy=w?(w.ownerUid||w.createdBy):currentUser.uid;
   DB.payments.push(pay);
   if(w&&!w.isPaid&&rcvAmt(selWorkId)>=expAmt(w)) {
     w.isPaid=true;
