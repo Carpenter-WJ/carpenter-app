@@ -27,18 +27,11 @@ service cloud.firestore {
 
     // ── 팀 ──
     match /teams/{teamId} {
-      // get: 초대 코드로 참여하려는 사람은 아직 멤버가 아니므로, 가입 트랜잭션 중
-      // memberCount/maxMembers 확인을 위해 문서 ID를 아는 인증된 사용자라면 단건 조회는 허용.
-      // list(전체 목록 열람)는 막아 팀 정보가 무차별로 노출되지 않도록 한다.
       allow get: if request.auth != null;
       allow list: if isTeamMember(teamId, request.auth.uid);
       allow create: if request.auth != null
         && request.resource.data.leaderUid == request.auth.uid
         && request.resource.data.memberCount == 1;
-      // update: 팀장은 전체 필드 수정 가능. 그 외엔 "초대 코드로 막 합류하는
-      // 본인"이 같은 트랜잭션에서 memberCount 필드만 +1 하는 경우만 허용
-      // (가입 트랜잭션이 본인 멤버 문서를 만들면서 정원 카운트도 함께 올려야 하는데,
-      // 그 시점엔 아직 팀장이 아니므로 별도 예외가 필요함).
       allow update: if isTeamLeader(teamId, request.auth.uid)
         || (
           request.auth != null
@@ -49,19 +42,15 @@ service cloud.firestore {
       allow delete: if false;
 
       match /members/{memberUid} {
-        // get: 본인 멤버 문서는 항상 조회 가능 (가입 전 "이미 멤버인지" 확인,
-        // 강제 퇴출 감지용). list(팀원 목록 전체)는 기존 멤버만.
         allow get: if request.auth != null
           && (request.auth.uid == memberUid || isTeamMember(teamId, request.auth.uid));
         allow list: if isTeamMember(teamId, request.auth.uid);
 
         allow create: if request.auth != null && request.auth.uid == memberUid
           && (
-            // 팀 생성 시 리더 본인 멤버 문서 생성
             (request.resource.data.role == 'leader'
               && get(/databases/$(database)/documents/teams/$(teamId)).data.leaderUid == memberUid)
             ||
-            // 초대 코드로 일반 가입 (정원 확인)
             (request.resource.data.role == 'member'
               && get(/databases/$(database)/documents/teams/$(teamId)).data.memberCount
                  < get(/databases/$(database)/documents/teams/$(teamId)).data.maxMembers)
@@ -71,44 +60,65 @@ service cloud.firestore {
         allow delete: if isTeamLeader(teamId, request.auth.uid);
       }
 
-      // jobs = 현장 정보(주소/연락처/메모 등)만 보관하는 공유 마스터 문서.
-      // 같은 현장에 여러 명이 갈 수 있으므로 날짜/일당은 두지 않고 wages에서 jobId로 참조한다.
+      // jobs = 현장 정보(주소/연락처/메모/공개범위 등)만 보관하는 공유 마스터 문서.
+      // visibility: 'all'(전체) | 'selected'(지정 팀원) | 'private'(팀장만)
       match /jobs/{jobId} {
-        allow read: if isTeamMember(teamId, request.auth.uid);
+        // 팀장은 항상 조회. 팀원은 visibility에 따라 접근 범위 제한.
+        allow read: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid)
+              && (resource.data.get('visibility', 'all') == 'all'
+                  || (resource.data.get('visibility', 'all') == 'selected'
+                      && resource.data.get('sharedWith', []).hasAny([request.auth.uid]))));
         allow create: if isTeamMember(teamId, request.auth.uid)
           && request.resource.data.createdBy == request.auth.uid;
-        // 현장 정보는 팀원 누구나 수정 가능.
+        // 현장 정보는 팀원 누구나 수정 가능(visibility/sharedWith 포함).
         allow update: if isTeamMember(teamId, request.auth.uid);
-        // 삭제는 만든 사람/리더만. (다른 사람의 wages가 이 현장을 참조 중일 수 있으므로
-        // 앱에서는 작업 기록 삭제 시 jobs 문서는 건드리지 않고 그대로 둔다.)
         allow delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
       }
 
-      // wages = 개인별 근무기록(날짜/품/일당). jobId로 현장(jobs)을 가리키며,
-      // 같은 jobId를 여러 명의 wages 문서가 함께 참조할 수 있다.
+      // wages = 개인별 근무기록(날짜/품/일당).
+      // ownerUid: 이 일당의 실제 주인. 팀장이 타인 대신 등록하면 ownerUid != createdBy.
       match /wages/{wageId} {
         allow read: if isTeamLeader(teamId, request.auth.uid)
-          || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+          || (isTeamMember(teamId, request.auth.uid)
+              && resource.data.get('ownerUid', resource.data.createdBy) == request.auth.uid);
+        // 팀원은 본인 것만, 팀장은 누구 것이든 ownerUid를 지정해 생성 가능.
         allow create: if isTeamMember(teamId, request.auth.uid)
           && request.resource.data.createdBy == request.auth.uid
+          && (request.resource.data.ownerUid == request.auth.uid
+              || isTeamLeader(teamId, request.auth.uid))
           && exists(/databases/$(database)/documents/teams/$(teamId)/jobs/$(request.resource.data.jobId));
         allow update, delete: if isTeamLeader(teamId, request.auth.uid)
-          || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+          || (isTeamMember(teamId, request.auth.uid)
+              && resource.data.get('ownerUid', resource.data.createdBy) == request.auth.uid);
       }
 
       match /payments/{paymentId} {
         allow read: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
-        // 정산 기록은 본인(근무기록 작성자)뿐 아니라 팀장이 대신 입력하는 경우가 많으므로,
-        // createdBy는 항상 "근무기록(wages)의 작성자"와 일치해야 하고, 쓰는 사람은
-        // 그 작성자 본인이거나 팀장이어야 한다.
         allow create: if isTeamMember(teamId, request.auth.uid)
           && request.resource.data.createdBy ==
-             get(/databases/$(database)/documents/teams/$(teamId)/wages/$(request.resource.data.wageId)).data.createdBy
+             get(/databases/$(database)/documents/teams/$(teamId)/wages/$(request.resource.data.wageId)).data.get('ownerUid', get(/databases/$(database)/documents/teams/$(teamId)/wages/$(request.resource.data.wageId)).data.createdBy)
           && (isTeamLeader(teamId, request.auth.uid) || request.auth.uid == request.resource.data.createdBy);
         allow update, delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
+      }
+
+      // notifications = 팀장이 팀원 일당 등록/수정 시 생성하는 인앱 알림.
+      match /notifications/{notifId} {
+        // 팀원은 본인 앞으로 온 알림만 읽음. 팀장은 전체 조회 가능(발송 확인용).
+        allow read: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid) && resource.data.toUid == request.auth.uid);
+        // 알림 생성은 팀장만.
+        allow create: if isTeamLeader(teamId, request.auth.uid)
+          && request.resource.data.fromUid == request.auth.uid;
+        // 팀원은 본인 알림 isRead 업데이트만 허용, 팀장은 모두.
+        allow update: if isTeamLeader(teamId, request.auth.uid)
+          || (isTeamMember(teamId, request.auth.uid)
+              && resource.data.toUid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']));
+        allow delete: if isTeamLeader(teamId, request.auth.uid);
       }
     }
 

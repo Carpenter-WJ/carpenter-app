@@ -165,6 +165,21 @@
     .wi-total { font-size:17px; font-weight:700; color:var(--pri); }
     .wi-del { background:none; border:none; color:var(--muted); font-size:16px; padding:4px 0 4px 6px; cursor:pointer; }
     .wi-who { font-size:13px; font-weight:700; color:var(--text2); }
+    /* 알림 배지 */
+    .tbtn-wrap { position:relative; flex:1; display:flex; flex-direction:column; align-items:center; }
+    .notif-badge { position:absolute; top:4px; right:calc(50% - 20px); background:var(--red); color:#fff; font-size:9px; font-weight:800; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid var(--tabbar-bg,#fff); }
+    /* 알림 배너 */
+    .notif-banner { margin:0 14px 10px; display:flex; flex-direction:column; gap:6px; }
+    .notif-item { background:var(--card); border-radius:12px; padding:11px 14px; display:flex; align-items:center; justify-content:space-between; border-left:4px solid var(--pri); }
+    .notif-msg { font-size:13px; font-weight:500; color:var(--text); flex:1; }
+    .notif-close { background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:0 0 0 10px; flex-shrink:0; }
+    /* 공유 설정 */
+    .vis-seg { display:flex; gap:6px; margin-top:6px; }
+    .vis-btn { flex:1; border:1.5px solid var(--border); background:none; color:var(--muted); border-radius:8px; padding:7px 4px; font-size:12px; font-weight:600; cursor:pointer; }
+    .vis-btn.on { border-color:var(--pri); background:var(--chip-bg); color:var(--pri); }
+    .member-check { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border); cursor:pointer; font-size:14px; }
+    .member-check:last-child { border-bottom:none; }
+    .member-check input { width:18px; height:18px; accent-color:var(--pri); cursor:pointer; }
 
     /* 같은 현장에 여러 명이 묶인 그룹 카드 */
     .wgroup { border-bottom:1px solid var(--border); }
@@ -489,6 +504,7 @@
 
 <!-- 기록 탭 -->
 <div class="page" id="page-work">
+  <div id="notifBanner" class="notif-banner" style="padding-top:10px;display:none"></div>
   <div class="stat-nav">
     <button onclick="moveWork(-1)">‹</button>
     <span class="sm" id="workLbl"></span>
@@ -589,8 +605,8 @@
   <button class="tbtn on" onclick="goTab('cal',this)">
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 9h18"/><path d="M8 14h.01M12 14h.01M16 14h.01"/></svg>달력
   </button>
-  <button class="tbtn" onclick="goTab('work',this)">
-    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1.5"/><path d="M9 12h6M9 16h4"/></svg>기록
+  <button class="tbtn" onclick="goTab('work',this)" style="position:relative">
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1.5"/><path d="M9 12h6M9 16h4"/></svg>기록<span id="notifBadge" class="notif-badge" style="display:none"></span>
   </button>
   <button class="tbtn" onclick="goTab('pay',this)">
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1.5 2 1.5 2-1.5 2 1.5 2-1.5 2 1.5 2-1.5 2 1.5V2l-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>정산
@@ -622,6 +638,11 @@
       <button onclick="closeOv('workOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
     </div>
     <input type="hidden" id="editWorkId">
+    <!-- 팀장 모드: 누구 일당인지 선택 -->
+    <div class="fg" id="ownerFg" style="display:none">
+      <label>누구 일당인지</label>
+      <select id="inOwner"></select>
+    </div>
     <div class="fg">
       <label>현장명</label>
       <input type="text" id="inSite" placeholder="예) 강남 아파트 현장" list="siteSuggestions" autocomplete="off">
@@ -675,6 +696,19 @@
         <div class="fg">
           <label>메모</label>
           <input type="text" id="inMemo" placeholder="기타 메모사항">
+        </div>
+        <!-- 팀장 모드: 공개 범위 설정 -->
+        <div class="fg" id="visibilityFg" style="display:none">
+          <label>공개 범위</label>
+          <div class="vis-seg">
+            <button class="vis-btn on" id="vis-all" onclick="setVisibility('all')">전체 공유</button>
+            <button class="vis-btn" id="vis-selected" onclick="setVisibility('selected')">특정 팀원만</button>
+            <button class="vis-btn" id="vis-private" onclick="setVisibility('private')">팀장만</button>
+          </div>
+        </div>
+        <div id="sharedWithFg" style="display:none;padding:4px 0 6px">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px">공유할 팀원 선택</div>
+          <div id="sharedWithList"></div>
         </div>
       </div>
     </div>
@@ -946,7 +980,7 @@ const WORK_COLORS = [
 function getColor(id) { return WORK_COLORS.find(c=>c.id===id) || WORK_COLORS[0]; }
 
 let currentUser = null;
-let DB = { works: [], payments: [], jobs: [] };
+let DB = { works: [], payments: [], jobs: [], notifications: [] };
 // ── 팀 모드 상태 ──
 let dataMode = 'personal'; // 'personal' | 'team'
 let activeTeamId = null;
@@ -1029,12 +1063,13 @@ function teamRef() { return fsdb.collection('teams').doc(activeTeamId); }
 // 일당/정산금액을 볼 수 있는지: 개인 모드는 항상 true, 팀 모드는 팀장 또는 본인 작성건만
 function canSeeWage(w) {
   if (dataMode !== 'team') return true;
-  return teamRole === 'leader' || w.createdBy === currentUser.uid;
+  const owner = w.ownerUid || w.createdBy;
+  return teamRole === 'leader' || owner === currentUser.uid;
 }
-// 현장(jobs) 기록을 삭제할 수 있는지: wages/payments 연쇄 삭제 권한과 맞춰 리더/작성자만
 function canDeleteJob(w) {
   if (dataMode !== 'team') return true;
-  return teamRole === 'leader' || w.createdBy === currentUser.uid;
+  const owner = w.ownerUid || w.createdBy;
+  return teamRole === 'leader' || owner === currentUser.uid;
 }
 
 async function save() {
@@ -1045,9 +1080,10 @@ async function save() {
       const t = teamRef();
       const batch = fsdb.batch();
       DB.works.forEach(w => {
-        if (!canSeeWage(w)) return; // 본인 일당이 아니면 내 화면엔 애초에 없지만 안전망으로 한번 더 확인
+        if (!canSeeWage(w)) return;
         batch.set(t.collection('wages').doc(w.id), {
           jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, isPaid: w.isPaid,
+          ownerUid: w.ownerUid || w.createdBy,
           createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       });
@@ -1068,19 +1104,28 @@ async function save() {
 
 async function loadTeamData() {
   const t = teamRef();
-  const ownOnly = teamRole !== 'leader';
-  const wagesQuery = ownOnly ? t.collection('wages').where('createdBy', '==', currentUser.uid) : t.collection('wages');
-  const paysQuery = ownOnly ? t.collection('payments').where('createdBy', '==', currentUser.uid) : t.collection('payments');
-  const [jobsSnap, wagesSnap, paysSnap, membersSnap] = await Promise.all([
-    t.collection('jobs').get(), wagesQuery.get(), paysQuery.get(), t.collection('members').get()
+  const isLeader = teamRole === 'leader';
+  const myUid = currentUser.uid;
+  // 팀원은 ownerUid가 본인인 wages만 조회 (리더는 전체)
+  const wagesQuery = isLeader ? t.collection('wages') : t.collection('wages').where('ownerUid', '==', myUid);
+  const paysQuery = isLeader ? t.collection('payments') : t.collection('payments').where('createdBy', '==', myUid);
+  const notifQuery = t.collection('notifications').where('toUid', '==', myUid).where('isRead', '==', false);
+  const [jobsSnap, wagesSnap, paysSnap, membersSnap, notifSnap] = await Promise.all([
+    t.collection('jobs').get(), wagesQuery.get(), paysQuery.get(), t.collection('members').get(), notifQuery.get()
   ]);
   const jobById = {};
-  DB.jobs = jobsSnap.docs.map(d => {
+  // 팀원은 visibility='private' 현장과 visibility='selected'이면서 sharedWith에 없는 현장 제외
+  DB.jobs = jobsSnap.docs.reduce((arr, d) => {
     const j = { id: d.id, ...d.data() };
-    jobById[d.id] = j;
-    return j;
-  });
-  // 현장(jobs) 정보 + 개인별 근무기록(wages)을 조인 — 한 현장에 여러 명의 근무기록이 묶일 수 있음
+    if (!isLeader) {
+      const vis = j.visibility || 'all';
+      if (vis === 'private') return arr;
+      if (vis === 'selected' && !(j.sharedWith || []).includes(myUid)) return arr;
+    }
+    jobById[j.id] = j;
+    arr.push(j);
+    return arr;
+  }, []);
   DB.works = wagesSnap.docs.map(d => {
     const wg = d.data();
     const job = jobById[wg.jobId] || {};
@@ -1088,14 +1133,17 @@ async function loadTeamData() {
       id: d.id, jobId: wg.jobId,
       site: job.site || '(삭제된 현장)', address: job.address, contact: job.contact, phone: job.phone, memo: job.memo, color: job.color,
       jobCreatedBy: job.createdBy,
-      dates: wg.dates, unit: wg.unit, wage: wg.wage, isPaid: wg.isPaid, createdBy: wg.createdBy
+      dates: wg.dates, unit: wg.unit, wage: wg.wage, isPaid: wg.isPaid,
+      ownerUid: wg.ownerUid || wg.createdBy, createdBy: wg.createdBy
     };
   });
   DB.payments = paysSnap.docs.map(d => {
     const p = d.data();
     return { id: d.id, date: p.date, amount: p.amount, note: p.note, createdBy: p.createdBy, workId: p.wageId };
   });
+  DB.notifications = notifSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   teamMembers = membersSnap.docs.map(d => d.data()).sort((a, b) => (a.role === 'leader' ? -1 : b.role === 'leader' ? 1 : 0));
+  updateNotifBadge();
 }
 
 function memberName(uid) {
@@ -1123,11 +1171,11 @@ async function loadData() {
       } else {
         // 팀장에 의해 강제 퇴출됨 → 개인 모드로 자동 복귀
         await userRef.update({ teamId: firebase.firestore.FieldValue.delete() });
-        dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = [];
+        dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = []; DB.notifications = [];
         await loadPersonalData(userRef);
       }
     } else {
-      dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = [];
+      dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = []; DB.notifications = [];
       await loadPersonalData(userRef);
     }
   } catch(e) {
@@ -1191,7 +1239,7 @@ async function migrateToTeam(teamDoc) {
     DB.works.slice(i, i + 150).forEach(w => {
       const { wage, isPaid, unit, dates, ...jobFields } = w;
       batch.set(teamDoc.collection('jobs').doc(w.id), { ...jobFields, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, isPaid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     await batch.commit();
   }
@@ -1607,7 +1655,7 @@ function openDayOv(ds) {
   } else {
     document.getElementById('dayOvWorks').innerHTML=works.map(w=>`
       <div class="dm-work">
-        <div class="dm-site">${w.site}${dataMode==='team'?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${memberName(w.createdBy)}</span>`:''}</div>
+        <div class="dm-site">${w.site}${dataMode==='team'?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${memberName(w.ownerUid||w.createdBy)}</span>`:''}</div>
         <div class="dm-wage">${w.wage!=null?fmtW(w.wage):'비공개'}</div>
         <button class="dm-edit" onclick="openWorkOv('${w.id}',null)">✏️</button>
       </div>
@@ -1653,6 +1701,28 @@ function openWorkOv(workId, prefillDate) {
   document.getElementById('wageHiddenNote').style.display=wageEditable?'none':'';
   const siteSource=(dataMode==='team'?DB.jobs:DB.works).map(x=>x.site);
   document.getElementById('siteSuggestions').innerHTML=[...new Set(siteSource)].map(s=>`<option value="${s}">`).join('');
+  // 팀장 전용 UI
+  const ownerFg=document.getElementById('ownerFg');
+  const visFg=document.getElementById('visibilityFg');
+  if(dataMode==='team' && teamRole==='leader'){
+    ownerFg.style.display='';
+    const sel=document.getElementById('inOwner');
+    sel.innerHTML=teamMembers.map(m=>`<option value="${m.uid}">${m.uid===currentUser.uid?'나 (팀장)':(m.displayName||'팀원')}</option>`).join('');
+    if(workId){
+      const w=DB.works.find(x=>x.id===workId);
+      if(w){ sel.value=w.ownerUid||w.createdBy; sel.disabled=true; } // 소유자는 생성 후 변경 불가
+    } else { sel.value=currentUser.uid; sel.disabled=false; }
+    visFg.style.display='';
+    // 기존 작업이면 해당 job의 visibility 세팅, 아니면 기본 'all'
+    let initVis='all', initShared=[];
+    if(workId){
+      const w=DB.works.find(x=>x.id===workId);
+      if(w){ const job=DB.jobs.find(j=>j.id===w.jobId); if(job){ initVis=job.visibility||'all'; initShared=job.sharedWith||[]; } }
+    }
+    setVisibility(initVis, initShared);
+  } else {
+    ownerFg.style.display='none'; visFg.style.display='none'; document.getElementById('sharedWithFg').style.display='none';
+  }
   renderColorChips();
   renderDateChips();
   openOv('workOv');
@@ -1667,6 +1737,69 @@ function renderDateChips() {
   if(lbl) lbl.textContent=editDates.length>0?`일한 날짜 (총 ${editDates.length}일)`:'일한 날짜';
 }
 function removeDate(d) { editDates=editDates.filter(x=>x!==d); renderDateChips(); }
+
+// ── 공개 범위 / 알림 ──
+function setVisibility(vis, sharedWith) {
+  ['all','selected','private'].forEach(v=>{
+    const btn=document.getElementById('vis-'+v);
+    if(btn) btn.classList.toggle('on', v===vis);
+  });
+  const fg=document.getElementById('sharedWithFg');
+  if(vis==='selected'){
+    fg.style.display='';
+    const others=teamMembers.filter(m=>m.uid!==currentUser.uid);
+    document.getElementById('sharedWithList').innerHTML=others.map(m=>`
+      <label class="member-check">
+        <input type="checkbox" value="${m.uid}" ${(sharedWith||[]).includes(m.uid)?'checked':''}>
+        <span>${m.displayName||'팀원'}</span>
+      </label>`).join('');
+  } else { fg.style.display='none'; }
+}
+
+function getSelectedVisibility() {
+  const active=document.querySelector('.vis-btn.on');
+  const vis=active?active.id.replace('vis-',''):'all';
+  let sharedWith=[];
+  if(vis==='selected'){
+    sharedWith=Array.from(document.querySelectorAll('#sharedWithList input:checked')).map(c=>c.value);
+  }
+  return {vis, sharedWith};
+}
+
+function updateNotifBadge() {
+  const badge=document.getElementById('notifBadge');
+  if(!badge) return;
+  const cnt=DB.notifications.length;
+  badge.style.display=cnt>0?'':'none';
+  badge.textContent=cnt>0?cnt:'';
+}
+
+function renderNotifBanner() {
+  const el=document.getElementById('notifBanner');
+  if(!el) return;
+  if(dataMode!=='team' || DB.notifications.length===0){ el.style.display='none'; return; }
+  el.style.display='';
+  el.innerHTML=DB.notifications.map(n=>`
+    <div class="notif-item">
+      <div class="notif-msg">${n.message||''}</div>
+      <button class="notif-close" onclick="markNotifRead('${n.id}')">✕</button>
+    </div>`).join('');
+}
+
+function markNotifRead(notifId) {
+  teamRef().collection('notifications').doc(notifId).update({isRead:true}).catch(()=>{});
+  DB.notifications=DB.notifications.filter(n=>n.id!==notifId);
+  updateNotifBadge();
+  renderNotifBanner();
+}
+
+function createNotification(toUid, type, wageId, site) {
+  const msg=type==='wage_modified'?`팀장이 "${site}" 일당을 수정했어요`:`팀장이 "${site}" 작업을 등록해줬어요`;
+  teamRef().collection('notifications').add({
+    toUid, fromUid:currentUser.uid, type, wageId, site, message:msg,
+    isRead:false, createdAt:firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(e=>console.error('알림 저장 오류:',e));
+}
 
 // ── 커스텀 날짜 선택 ──
 let pickY, pickM, pickMode='single', pickSel=[], rangeStart=null;
@@ -1818,6 +1951,12 @@ async function saveWork() {
   if(!site){alert('현장명을 입력해 주세요.');return;}
   if(editDates.length===0){alert('날짜를 1개 이상 추가해 주세요.');return;}
 
+  // 팀장 전용: 소유자 / 공개 범위
+  const isLeaderMode=dataMode==='team'&&teamRole==='leader';
+  const ownerUid=isLeaderMode?document.getElementById('inOwner').value:currentUser.uid;
+  let jobVis='all', jobSharedWith=[];
+  if(isLeaderMode){ const v=getSelectedVisibility(); jobVis=v.vis; jobSharedWith=v.sharedWith; }
+
   const existing=workId?DB.works.find(x=>x.id===workId):null;
   const wageEditable=!existing||canSeeWage(existing);
   let wage;
@@ -1830,19 +1969,25 @@ async function saveWork() {
     existing.site=site;existing.unit=unit;existing.dates=editDates.sort();existing.color=editColor;
     existing.address=address;existing.contact=contact;existing.phone=phone;existing.memo=memo;
     if(wageEditable) existing.wage=wage;
-    if(dataMode==='team') saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor});
+    if(dataMode==='team'){
+      saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
+      // 팀장이 타인 일당 수정 시 알림
+      if(isLeaderMode && (existing.ownerUid||existing.createdBy)!==currentUser.uid){
+        createNotification(existing.ownerUid||existing.createdBy,'wage_modified',existing.id,site);
+      }
+    }
   } else {
     let jobId;
     if(dataMode==='team'){
-      // 현장명이 기존 현장과 같으면 그 현장에 내 근무기록만 새로 묶어서 추가 (정보 공유)
       const matched=DB.jobs.find(j=>j.site===site);
       if(matched){
         jobId=matched.id;
-        if(address||contact||phone||memo) saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor});
+        if(address||contact||phone||memo||isLeaderMode){
+          saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
+        }
       } else {
-        // 새 현장은 근무기록보다 먼저 서버에 만들어져 있어야 함 (wages 규칙이 jobs 존재를 확인함)
         jobId=Date.now().toString(36)+'j';
-        const jobData={site,address,contact,phone,memo,color:editColor,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+        const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
         try {
           await teamRef().collection('jobs').doc(jobId).set(jobData);
           DB.jobs.push({id:jobId,...jobData});
@@ -1853,9 +1998,14 @@ async function saveWork() {
         }
       }
     }
-    const w={id:Date.now().toString(36),site,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
-    if(dataMode==='team'){ w.createdBy=currentUser.uid; w.jobId=jobId; }
+    const wId=Date.now().toString(36);
+    const w={id:wId,site,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
+    if(dataMode==='team'){ w.createdBy=currentUser.uid; w.ownerUid=ownerUid; w.jobId=jobId; }
     DB.works.push(w);
+    // 팀장이 타인 대신 신규 등록 시 알림
+    if(isLeaderMode && ownerUid!==currentUser.uid){
+      createNotification(ownerUid,'wage_created',wId,site);
+    }
   }
   DB.works.sort((a,b)=>b.dates[b.dates.length-1].localeCompare(a.dates[a.dates.length-1]));
   save(); closeAll();
@@ -1907,6 +2057,7 @@ function moveWork(d) {
 }
 
 function renderWork() {
+  renderNotifBanner();
   document.getElementById('workLbl').textContent=`${workY}년 ${workM+1}월`;
   const filtered=DB.works.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}));
   const totalDays=new Set(filtered.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
@@ -1965,7 +2116,7 @@ function renderWorkRow(w,y,m,standalone) {
   const calc=wageVisible?(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})():'';
   const c=getColor(w.color||'orange');
   const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="delWork('${w.id}')">🗑</button>`:'';
-  const titleHtml=standalone?`<div class="wi-site">${w.site}</div>`:(dataMode==='team'?`<div class="wi-who">${memberName(w.createdBy)}</div>`:'');
+  const titleHtml=standalone?`<div class="wi-site">${w.site}</div>`:(dataMode==='team'?`<div class="wi-who">${memberName(w.ownerUid||w.createdBy)}</div>`:'');
   return `
     <div class="witem"${standalone?` style="border-left:4px solid ${c.border}"`:''}>
       <div class="wi-main">
