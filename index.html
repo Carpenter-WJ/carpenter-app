@@ -178,6 +178,11 @@
     .vis-btn { flex:1; border:1.5px solid var(--border); background:none; color:var(--muted); border-radius:8px; padding:7px 4px; font-size:12px; font-weight:600; cursor:pointer; }
     .vis-btn.on { border-color:var(--pri); background:var(--chip-bg); color:var(--pri); }
     .member-check { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border); cursor:pointer; font-size:14px; }
+    .mw-row { display:flex; align-items:center; gap:6px; padding:9px 0; border-bottom:1px solid var(--border); }
+    .mw-check-label { display:flex; align-items:center; gap:7px; flex:1; font-size:14px; font-weight:500; cursor:pointer; min-width:0; }
+    .mw-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mw-wage { width:86px; text-align:right; border:1.5px solid var(--border); border-radius:8px; padding:5px 8px; font-size:14px; background:var(--bg); color:var(--text); }
+    .mw-unit { width:68px; border:1.5px solid var(--border); border-radius:8px; padding:5px 4px; font-size:13px; background:var(--bg); color:var(--text); }
     .member-check:last-child { border-bottom:none; }
     .member-check input { width:18px; height:18px; accent-color:var(--pri); cursor:pointer; }
 
@@ -638,10 +643,15 @@
       <button onclick="closeOv('workOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
     </div>
     <input type="hidden" id="editWorkId">
-    <!-- 팀장 모드: 누구 일당인지 선택 -->
+    <!-- 팀장 신규: 팀원 다중 선택 + 개별 일당 -->
+    <div id="memberWagesFg" style="display:none;margin-bottom:4px">
+      <div style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:8px">참여 팀원 및 일당</div>
+      <div id="memberWageList"></div>
+    </div>
+    <!-- 팀장 수정: 소유자 표시 (읽기전용) -->
     <div class="fg" id="ownerFg" style="display:none">
       <label>누구 일당인지</label>
-      <select id="inOwner"></select>
+      <div id="ownerName" style="font-size:15px;font-weight:600;padding:6px 0;color:var(--text)"></div>
     </div>
     <div class="fg">
       <label>현장명</label>
@@ -656,7 +666,7 @@
       <label>일당 (원)</label>
       <div style="font-size:13px;color:var(--muted);padding:10px 0">다른 팀원이 등록한 현장이라 일당을 볼 수도, 수정할 수도 없어요</div>
     </div>
-    <div class="fg">
+    <div class="fg" id="unitFg">
       <label>품수</label>
       <select id="inUnit">
         <option value="0.5">0.5품 — 반나절</option>
@@ -826,14 +836,31 @@
   <div class="sheet">
     <div class="sh-handle"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-      <div class="sh-title" style="margin-bottom:0">코드로 참여하기</div>
+      <div class="sh-title" style="margin-bottom:0">팀 가입 신청</div>
       <button onclick="closeOv('teamJoinOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
     </div>
     <div class="fg">
       <label>초대 코드</label>
       <input type="text" id="inJoinCode" placeholder="6자리 코드 입력" style="text-transform:uppercase;letter-spacing:2px" maxlength="6">
     </div>
-    <button class="btn-pri" id="teamJoinBtn" onclick="joinTeamByCode()">참여하기</button>
+    <div class="fg">
+      <label>한마디 <span style="color:var(--muted);font-size:12px">(선택)</span></label>
+      <input type="text" id="inJoinMessage" placeholder="팀장에게 전할 말 (예: 홍길동입니다)" maxlength="60">
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">신청 후 팀장이 승인해야 합류돼요</div>
+    <button class="btn-pri" id="teamJoinBtn" onclick="joinTeamByCode()">가입 신청</button>
+  </div>
+</div>
+
+<!-- 가입 신청 관리 모달 -->
+<div class="ov" id="teamRequestsOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div class="sh-title" style="margin-bottom:0">가입 신청 관리</div>
+      <button onclick="closeOv('teamRequestsOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
+    <div id="joinRequestList"></div>
   </div>
 </div>
 
@@ -982,11 +1009,14 @@ function getColor(id) { return WORK_COLORS.find(c=>c.id===id) || WORK_COLORS[0];
 let currentUser = null;
 let DB = { works: [], payments: [], jobs: [], notifications: [] };
 // ── 팀 모드 상태 ──
-let dataMode = 'personal'; // 'personal' | 'team'
+let dataMode = 'personal'; // 'personal' | 'team' | 'pending'
 let activeTeamId = null;
 let teamInfo = null;       // teams/{teamId} 문서
 let teamRole = null;       // 'leader' | 'member'
 let teamMembers = [];
+let pendingTeamId = null;  // 가입 신청 대기 중인 팀 ID
+let pendingTeamName = '';  // 대기 중인 팀 이름
+let joinRequests = [];     // 팀장용 — 대기 중인 가입 신청 목록
 const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
@@ -1029,7 +1059,8 @@ function saveDefWage(v) { defaultWage = v; localStorage.setItem('defaultWage', v
 // ── 설정 탭 렌더 ──
 function renderSet() {
   applyTheme();
-  renderTeamSettings();
+  if (teamRole === 'leader') loadJoinRequests().then(renderTeamSettings);
+  else renderTeamSettings();
   const inp = document.getElementById('defWageInp');
   if(inp) inp.value = defaultWage;
   const card = document.getElementById('accountCard');
@@ -1109,22 +1140,27 @@ async function loadTeamData() {
   // 팀원은 ownerUid가 본인인 wages만 조회 (리더는 전체)
   const wagesQuery = isLeader ? t.collection('wages') : t.collection('wages').where('ownerUid', '==', myUid);
   const paysQuery = isLeader ? t.collection('payments') : t.collection('payments').where('createdBy', '==', myUid);
-  const jobsQuery = isLeader
-    ? [t.collection('jobs').get()]
-    : [
-        t.collection('jobs').where('visibility', '==', 'all').get(),
-        t.collection('jobs').where('visibility', '==', 'selected').where('sharedWith', 'array-contains', myUid).get()
-      ];
-  const [jobsResults, wagesSnap, paysSnap, membersSnap] = await Promise.all([
-    Promise.all(jobsQuery), wagesQuery.get(), paysQuery.get(), t.collection('members').get()
+  // 팀장은 전체 jobs 조회, 팀원은 visibility='all'만 먼저 조회
+  // visibility='selected' 쿼리는 복합 인덱스 필요 → 별도 try-catch (인덱스 빌드 중 실패해도 나머지 유지)
+  const mainJobsQuery = isLeader
+    ? t.collection('jobs').get()
+    : t.collection('jobs').where('visibility', '==', 'all').get();
+  const [jobsSnap, wagesSnap, paysSnap, membersSnap] = await Promise.all([
+    mainJobsQuery, wagesQuery.get(), paysQuery.get(), t.collection('members').get()
   ]);
+  let jobsSelected = { docs: [] };
+  if (!isLeader) {
+    try {
+      jobsSelected = await t.collection('jobs').where('visibility', '==', 'selected').where('sharedWith', 'array-contains', myUid).get();
+    } catch(e) { console.warn('선택공개 현장 로드 실패 (인덱스 빌드 중일 수 있음):', e.message); }
+  }
+  const allJobDocs = isLeader ? jobsSnap.docs : [...jobsSnap.docs, ...jobsSelected.docs];
   // notifications는 복합 인덱스가 필요해 별도 try-catch로 분리 (인덱스 빌드 중일 때 실패해도 나머지 데이터 유지)
   let notifSnap = { docs: [] };
   try {
     notifSnap = await t.collection('notifications').where('toUid', '==', myUid).where('isRead', '==', false).get();
   } catch(e) { console.warn('알림 로드 실패 (인덱스 빌드 중일 수 있음):', e.message); }
   const jobById = {};
-  const allJobDocs = jobsResults.flatMap(snap => snap.docs);
   DB.jobs = allJobDocs.map(d => {
     const j = { id: d.id, ...d.data() };
     jobById[j.id] = j;
@@ -1170,17 +1206,79 @@ async function loadData() {
         teamRole = memberDoc.data().role;
         const teamDoc = await teamRef().get();
         teamInfo = teamDoc.exists ? teamDoc.data() : null;
-        await loadTeamData();
-        localStorage.setItem('moksujilji2', JSON.stringify(DB));
+
+        // 팀이 해체된 경우 → 본인 기록 개인으로 이관 후 개인 모드 복귀
+        if (teamInfo && teamInfo.disbanded) {
+          await migrateFromDisbandedTeam(userRef, teamDoc);
+          dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = []; DB.notifications = [];
+          await loadPersonalData(userRef);
+          showToast('팀이 해체되어 기록이 개인으로 이관되었습니다.');
+        } else {
+          await loadTeamData();
+          localStorage.setItem('moksujilji2', JSON.stringify(DB));
+        }
       } else {
-        // 팀장에 의해 강제 퇴출됨 → 개인 모드로 자동 복귀
+        // 팀장에 의해 강제 퇴출됨 → memberExits 패키지 확인 후 개인 이관
+        try {
+          const exitDoc = await teamRef().collection('memberExits').doc(currentUser.uid).get();
+          if (exitDoc.exists) {
+            const { works: exitWorks = [], payments: exitPays = [] } = exitDoc.data();
+            if (exitWorks.length > 0 || exitPays.length > 0) {
+              const batch = fsdb.batch();
+              exitWorks.forEach(w => batch.set(userRef.collection('works').doc(w.id), w));
+              exitPays.forEach(p => batch.set(userRef.collection('payments').doc(p.id), p));
+              await batch.commit();
+            }
+            await exitDoc.ref.delete();
+          }
+        } catch(e) { console.warn('퇴출 이관 처리 오류:', e.message); }
         await userRef.update({ teamId: firebase.firestore.FieldValue.delete() });
         dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = []; DB.notifications = [];
         await loadPersonalData(userRef);
+        showToast('팀에서 내보내졌습니다. 작업 기록은 개인 기록으로 이관되었어요.');
       }
     } else {
-      dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = []; DB.notifications = [];
-      await loadPersonalData(userRef);
+      // teamId 없음 — 가입 신청 대기 중인지 확인
+      const pTeamId = userDoc.exists ? userDoc.data().pendingTeamId : null;
+      if (pTeamId) {
+        try {
+          const reqDoc = await fsdb.collection('teams').doc(pTeamId).collection('joinRequests').doc(currentUser.uid).get();
+          if (reqDoc.exists && reqDoc.data().status === 'approved') {
+            // 팀장이 승인함 → teamId 설정하고 팀 모드로 진입
+            await userRef.update({ teamId: pTeamId, pendingTeamId: firebase.firestore.FieldValue.delete() });
+            activeTeamId = pTeamId; dataMode = 'team';
+            const teamDoc = await teamRef().get();
+            teamInfo = teamDoc.exists ? teamDoc.data() : null;
+            const memberDoc2 = await teamRef().collection('members').doc(currentUser.uid).get();
+            teamRole = memberDoc2.exists ? memberDoc2.data().role : 'member';
+            await loadTeamData();
+            localStorage.setItem('moksujilji2', JSON.stringify(DB));
+            showToast('팀에 합류되었습니다!');
+          } else if (reqDoc.exists && reqDoc.data().status === 'rejected') {
+            // 거절됨
+            await userRef.update({ pendingTeamId: firebase.firestore.FieldValue.delete() });
+            pendingTeamId = null; pendingTeamName = '';
+            dataMode = 'personal'; activeTeamId = null; DB.jobs = []; DB.notifications = [];
+            await loadPersonalData(userRef);
+            showToast('팀 가입 신청이 거절되었습니다.');
+          } else {
+            // 아직 대기 중
+            const tDoc = await fsdb.collection('teams').doc(pTeamId).get();
+            pendingTeamId = pTeamId;
+            pendingTeamName = tDoc.exists ? (tDoc.data().name || '') : '';
+            dataMode = 'pending';
+            activeTeamId = null; DB.jobs = []; DB.notifications = [];
+            await loadPersonalData(userRef);
+          }
+        } catch(e) {
+          console.warn('가입 신청 상태 확인 오류:', e.message);
+          dataMode = 'personal'; activeTeamId = null; DB.jobs = []; DB.notifications = [];
+          await loadPersonalData(userRef);
+        }
+      } else {
+        dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = []; DB.notifications = [];
+        await loadPersonalData(userRef);
+      }
     }
   } catch(e) {
     console.error('데이터 로드 오류:', e);
@@ -1192,6 +1290,48 @@ async function loadData() {
   }
   renderCal();
   setTimeout(showOnboard, 600);
+}
+
+async function migrateFromDisbandedTeam(userRef, teamDoc) {
+  const myUid = currentUser.uid;
+  const tName = teamDoc.data().name || '(해체된 팀)';
+  const t = teamRef();
+  // jobs는 visibility 필터 쿼리로 분리 (private job 있으면 전체 쿼리 실패)
+  const [jobsAll, jobsSel, wagesSnap, paysSnap] = await Promise.all([
+    t.collection('jobs').where('visibility', '==', 'all').get(),
+    t.collection('jobs').where('visibility', '==', 'selected').where('sharedWith', 'array-contains', myUid).get(),
+    t.collection('wages').where('ownerUid', '==', myUid).get(),
+    t.collection('payments').where('createdBy', '==', myUid).get()
+  ]);
+  const jobById = {};
+  [...jobsAll.docs, ...jobsSel.docs].forEach(d => { jobById[d.id] = d.data(); });
+  if (wagesSnap.docs.length === 0 && paysSnap.docs.length === 0) {
+    await userRef.update({ teamId: firebase.firestore.FieldValue.delete() });
+    return;
+  }
+  const batch = fsdb.batch();
+  wagesSnap.docs.forEach(d => {
+    const wg = d.data(); const job = jobById[wg.jobId] || {};
+    batch.set(userRef.collection('works').doc(d.id), {
+      id: d.id, jobId: wg.jobId,
+      site: job.site || '(팀 현장)', address: job.address || '',
+      contact: job.contact || '', phone: job.phone || '',
+      memo: job.memo || '', color: job.color || '#007AFF',
+      dates: wg.dates || [], unit: wg.unit || 1,
+      wage: wg.wage, isPaid: wg.isPaid || false,
+      createdBy: wg.createdBy, teamName: tName
+    });
+  });
+  paysSnap.docs.forEach(d => {
+    const p = d.data();
+    batch.set(userRef.collection('payments').doc(d.id), {
+      id: d.id, date: p.date, amount: p.amount,
+      note: p.note || '', workId: p.wageId || '',
+      createdBy: p.createdBy
+    });
+  });
+  batch.update(userRef, { teamId: firebase.firestore.FieldValue.delete() });
+  await batch.commit();
 }
 
 async function loadPersonalData(userRef) {
@@ -1239,13 +1379,21 @@ async function generateInviteCode() {
 }
 
 async function migrateToTeam(teamDoc) {
-  // 기존 개인 기록은 1인 기록이므로 현장(jobs) 1건당 근무기록(wages) 1건으로 그대로 옮긴다.
-  // (같은 id를 jobs/wages 양쪽에 쓰지만 컬렉션이 다르므로 충돌 없음)
-  for (let i = 0; i < DB.works.length; i += 150) {
+  if (DB.works.length === 0) return;
+  // jobs 먼저 커밋 (wages 규칙이 exists(jobs/{id})를 체크하므로 같은 batch 금지)
+  for (let i = 0; i < DB.works.length; i += 450) {
     const batch = fsdb.batch();
-    DB.works.slice(i, i + 150).forEach(w => {
-      const { wage, isPaid, unit, dates, ...jobFields } = w;
+    DB.works.slice(i, i + 450).forEach(w => {
+      const { wage, isPaid, unit, dates, teamName, ...jobFields } = w;
       batch.set(teamDoc.collection('jobs').doc(w.id), { ...jobFields, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+    await batch.commit();
+  }
+  // jobs 커밋 완료 후 wages 커밋
+  for (let i = 0; i < DB.works.length; i += 450) {
+    const batch = fsdb.batch();
+    DB.works.slice(i, i + 450).forEach(w => {
+      const { wage, isPaid, unit, dates } = w;
       batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     await batch.commit();
@@ -1293,15 +1441,10 @@ async function createTeam() {
         teamId, createdAt: firebase.firestore.FieldValue.serverTimestamp(), active: true
       });
       await migrateToTeam(teamDoc);
-
-      dataMode = 'team'; activeTeamId = teamId; teamRole = 'leader';
-      const savedTeamDoc = await teamDoc.get();
-      teamInfo = savedTeamDoc.data();
-      await loadTeamData();
       closeOv('teamCreateOv');
       document.getElementById('inTeamName').value = '';
-      renderSet(); renderCal();
-      alert(`팀이 생성됐어요!\n초대 코드: ${code}`);
+      alert(`팀이 생성됐어요!\n초대 코드: ${code}\n\n페이지를 새로고침합니다.`);
+      location.reload();
     } catch (innerErr) {
       console.error('팀 생성 중 오류:', innerErr);
       await userRef.update({ teamId: firebase.firestore.FieldValue.delete() }).catch(() => {});
@@ -1318,60 +1461,155 @@ async function createTeam() {
 async function joinTeamByCode() {
   const code = document.getElementById('inJoinCode').value.trim().toUpperCase();
   if (!code) { alert('초대 코드를 입력해주세요.'); return; }
+  const msg = document.getElementById('inJoinMessage').value.trim();
   const btn = document.getElementById('teamJoinBtn');
   btn.disabled = true;
   try {
     const userRef = fsdb.collection('users').doc(currentUser.uid);
-    const codeRef = fsdb.collection('inviteCodes').doc(code);
+    const userDoc = await userRef.get();
+    if (userDoc.exists && userDoc.data().teamId) throw new Error('ALREADY_IN_TEAM');
+    if (userDoc.exists && userDoc.data().pendingTeamId) throw new Error('ALREADY_PENDING');
 
-    const teamId = await fsdb.runTransaction(async tx => {
-      const userDoc = await tx.get(userRef);
-      if (userDoc.exists && userDoc.data().teamId) throw new Error('ALREADY_IN_TEAM');
+    const codeDoc = await fsdb.collection('inviteCodes').doc(code).get();
+    if (!codeDoc.exists || codeDoc.data().active === false) throw new Error('INVALID_CODE');
+    const tId = codeDoc.data().teamId;
 
-      const codeDoc = await tx.get(codeRef);
-      if (!codeDoc.exists || codeDoc.data().active === false) throw new Error('INVALID_CODE');
-      const tId = codeDoc.data().teamId;
+    const tDoc = await fsdb.collection('teams').doc(tId).get();
+    if (!tDoc.exists) throw new Error('INVALID_CODE');
+    const tData = tDoc.data();
+    if (tData.memberCount >= tData.maxMembers) throw new Error('TEAM_FULL');
+    if (tData.disbanded) throw new Error('INVALID_CODE');
 
-      const tRef = fsdb.collection('teams').doc(tId);
-      const tDoc = await tx.get(tRef);
-      if (!tDoc.exists) throw new Error('INVALID_CODE');
-      const tData = tDoc.data();
-      if (tData.memberCount >= tData.maxMembers) throw new Error('TEAM_FULL');
+    const memberDoc = await fsdb.collection('teams').doc(tId).collection('members').doc(currentUser.uid).get();
+    if (memberDoc.exists) throw new Error('ALREADY_MEMBER');
 
-      const memberRef = tRef.collection('members').doc(currentUser.uid);
-      const memberDoc = await tx.get(memberRef);
-      if (memberDoc.exists) throw new Error('ALREADY_MEMBER');
-
-      tx.set(memberRef, {
-        uid: currentUser.uid, role: 'member',
-        displayName: currentUser.displayName || '', photoURL: currentUser.photoURL || '',
-        joinedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      tx.update(tRef, { memberCount: firebase.firestore.FieldValue.increment(1) });
-      tx.set(userRef, { teamId: tId }, { merge: true });
-      return tId;
+    // 직접 합류 대신 가입 신청서 생성
+    await fsdb.collection('teams').doc(tId).collection('joinRequests').doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || '',
+      photoURL: currentUser.photoURL || '',
+      message: msg,
+      status: 'pending',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    await userRef.set({ pendingTeamId: tId }, { merge: true });
 
-    dataMode = 'team'; activeTeamId = teamId; teamRole = 'member';
-    const teamDoc = await teamRef().get();
-    teamInfo = teamDoc.data();
-    await loadTeamData();
     closeOv('teamJoinOv');
     document.getElementById('inJoinCode').value = '';
-    renderSet(); renderCal();
-    alert('팀에 합류했어요!');
+    document.getElementById('inJoinMessage').value = '';
+    alert(`가입 신청이 완료되었어요!\n팀장이 승인하면 팀에 합류됩니다.`);
+    location.reload();
   } catch (e) {
     const msgs = {
       ALREADY_IN_TEAM: '이미 팀에 속해 있습니다.',
+      ALREADY_PENDING: '이미 가입 신청 중인 팀이 있습니다.',
       INVALID_CODE: '유효하지 않은 초대 코드입니다.',
       TEAM_FULL: '팀 정원이 가득 찼습니다.',
       ALREADY_MEMBER: '이미 이 팀의 멤버입니다.'
     };
-    alert(msgs[e.message] || `참여 중 오류가 발생했습니다.\n${e.code || ''} ${e.message || e}`);
+    alert(msgs[e.message] || `신청 중 오류가 발생했습니다.\n${e.code || ''} ${e.message || e}`);
     console.error(e);
   } finally {
     btn.disabled = false;
   }
+}
+
+async function loadJoinRequests() {
+  if (!activeTeamId || teamRole !== 'leader') return;
+  try {
+    const snap = await teamRef().collection('joinRequests').where('status', '==', 'pending').get();
+    joinRequests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) { console.warn('가입 신청 로드 실패:', e.message); joinRequests = []; }
+}
+
+function openTeamRequestsOv() {
+  openOv('teamRequestsOv');
+  renderJoinRequestList();
+}
+
+function renderJoinRequestList() {
+  const wrap = document.getElementById('joinRequestList');
+  if (!wrap) return;
+  if (joinRequests.length === 0) {
+    wrap.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px 0;font-size:14px">대기 중인 가입 신청이 없어요</div>';
+    return;
+  }
+  wrap.innerHTML = joinRequests.map(r => `
+    <div class="set-item" style="align-items:flex-start;gap:10px">
+      ${r.photoURL
+        ? `<img class="set-avatar" style="width:40px;height:40px;flex-shrink:0" src="${r.photoURL}" onerror="this.style.display='none'">`
+        : `<div class="set-avatar" style="width:40px;height:40px;flex-shrink:0;background:var(--pri);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">👤</div>`}
+      <div class="set-text" style="flex:1">
+        <div class="set-item-lbl">${r.displayName || '이름 없음'}</div>
+        ${r.message ? `<div class="set-item-sub" style="white-space:pre-wrap">"${r.message}"</div>` : '<div class="set-item-sub" style="color:var(--muted)">메시지 없음</div>'}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <button class="btn-pri" style="width:auto;padding:6px 14px;font-size:13px" onclick="approveJoinRequest('${r.id}')">승인</button>
+        <button class="btn-out" style="width:auto;padding:6px 14px;font-size:13px;color:var(--red);border-color:var(--red)" onclick="rejectJoinRequest('${r.id}')">거절</button>
+      </div>
+    </div>`).join('');
+}
+
+async function approveJoinRequest(uid) {
+  if (teamRole !== 'leader') return;
+  const req = joinRequests.find(r => r.id === uid);
+  if (!req) return;
+  if (teamInfo.memberCount >= teamInfo.maxMembers) { alert('팀 정원이 가득 찼습니다.'); return; }
+  try {
+    const t = teamRef();
+    const batch = fsdb.batch();
+    // 멤버 문서 생성
+    batch.set(t.collection('members').doc(uid), {
+      uid, role: 'member',
+      displayName: req.displayName || '', photoURL: req.photoURL || '',
+      joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // 카운트 증가
+    batch.update(t, { memberCount: firebase.firestore.FieldValue.increment(1) });
+    // 신청 상태 갱신
+    batch.update(t.collection('joinRequests').doc(uid), { status: 'approved', respondedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await batch.commit();
+    teamInfo.memberCount = (teamInfo.memberCount || 0) + 1;
+    joinRequests = joinRequests.filter(r => r.id !== uid);
+    renderJoinRequestList();
+    renderTeamSettings();
+    showToast(`${req.displayName || '팀원'} 승인 완료`);
+  } catch(e) { console.error(e); alert('승인에 실패했습니다.\n' + e.message); }
+}
+
+async function rejectJoinRequest(uid) {
+  if (teamRole !== 'leader') return;
+  const req = joinRequests.find(r => r.id === uid);
+  if (!req) return;
+  if (!confirm(`${req.displayName || '신청자'}의 가입 신청을 거절할까요?`)) return;
+  try {
+    await teamRef().collection('joinRequests').doc(uid).update({
+      status: 'rejected', respondedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    joinRequests = joinRequests.filter(r => r.id !== uid);
+    renderJoinRequestList();
+    renderTeamSettings();
+    showToast('가입 신청을 거절했습니다.');
+  } catch(e) { console.error(e); alert('거절에 실패했습니다.\n' + e.message); }
+}
+
+async function cancelJoinRequest() {
+  if (!confirm('팀 가입 신청을 취소할까요?')) return;
+  try {
+    const userRef = fsdb.collection('users').doc(currentUser.uid);
+    const userDoc = await userRef.get();
+    const pTeamId = userDoc.exists ? userDoc.data().pendingTeamId : null;
+    if (pTeamId) {
+      try {
+        await fsdb.collection('teams').doc(pTeamId).collection('joinRequests').doc(currentUser.uid).delete();
+      } catch(e) { console.warn('신청서 삭제 실패:', e.message); }
+    }
+    await userRef.update({ pendingTeamId: firebase.firestore.FieldValue.delete() });
+    pendingTeamId = null; pendingTeamName = '';
+    dataMode = 'personal';
+    renderTeamSettings();
+    showToast('가입 신청을 취소했습니다.');
+  } catch(e) { console.error(e); alert('신청 취소에 실패했습니다.'); }
 }
 
 async function rotateInviteCode() {
@@ -1390,6 +1628,68 @@ async function rotateInviteCode() {
     teamInfo.inviteCode = newCode;
     renderTeamSettings();
   } catch (e) { console.error(e); alert('코드 재발급에 실패했습니다.'); }
+}
+
+async function deleteTeam() {
+  if (teamRole !== 'leader') return;
+  if (!confirm('팀을 해체하면 팀이 닫히고,\n기록은 각자 개인으로 이관됩니다.\n계속할까요?')) return;
+  try {
+    const t = teamRef();
+    const myUid = currentUser.uid;
+    const tName = teamInfo.name;
+    const userRef = fsdb.collection('users').doc(myUid);
+
+    // jobs 맵 구성 (이관 시 site 정보 결합용)
+    const [jobsSnap, wagesSnap, paysSnap] = await Promise.all([
+      t.collection('jobs').get(),
+      t.collection('wages').where('ownerUid', '==', myUid).get(),
+      t.collection('payments').where('createdBy', '==', myUid).get()
+    ]);
+    const jobById = {};
+    jobsSnap.docs.forEach(d => { jobById[d.id] = d.data(); });
+
+    // 팀장 본인 wages+payments → users/{uid}/works+payments 이관
+    if (wagesSnap.docs.length > 0 || paysSnap.docs.length > 0) {
+      const batch = fsdb.batch();
+      wagesSnap.docs.forEach(d => {
+        const wg = d.data(); const job = jobById[wg.jobId] || {};
+        batch.set(userRef.collection('works').doc(d.id), {
+          id: d.id, jobId: wg.jobId,
+          site: job.site || '(팀 현장)', address: job.address || '',
+          contact: job.contact || '', phone: job.phone || '',
+          memo: job.memo || '', color: job.color || '#007AFF',
+          dates: wg.dates || [], unit: wg.unit || 1,
+          wage: wg.wage, isPaid: wg.isPaid || false,
+          createdBy: wg.createdBy, teamName: tName
+        });
+      });
+      paysSnap.docs.forEach(d => {
+        const p = d.data();
+        batch.set(userRef.collection('payments').doc(d.id), {
+          id: d.id, date: p.date, amount: p.amount,
+          note: p.note || '', workId: p.wageId || '',
+          createdBy: p.createdBy
+        });
+      });
+      await batch.commit();
+    }
+
+    // disbanded 표시 + 초대코드 비활성화 + 팀장 teamId 제거
+    const batch2 = fsdb.batch();
+    batch2.update(t, { disbanded: true, disbandedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    if (teamInfo.inviteCode) {
+      batch2.update(fsdb.collection('inviteCodes').doc(teamInfo.inviteCode), { active: false });
+    }
+    batch2.update(userRef, { teamId: firebase.firestore.FieldValue.delete() });
+    await batch2.commit();
+
+    activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
+    dataMode = 'personal';
+    DB = { works: [], payments: [], jobs: [], notifications: [] };
+    await loadData();
+    renderTeamSettings();
+    showToast('팀이 해체되었습니다. 기록이 개인으로 이관되었어요.');
+  } catch (e) { console.error(e); alert('팀 해체에 실패했습니다: ' + e.message); }
 }
 
 async function loadTeamMembers() {
@@ -1421,20 +1721,72 @@ function renderMemberList() {
 
 async function removeMember(uid) {
   if (teamRole !== 'leader') return;
-  if (!confirm('이 팀원을 팀에서 내보낼까요?\n내보낸 팀원은 자동으로 개인 모드로 돌아가며, 이전 개인 기록은 그대로 보존돼요.')) return;
+  if (!confirm('이 팀원을 팀에서 내보낼까요?\n팀원의 작업 기록은 개인 기록으로 이관돼요.')) return;
   try {
-    await teamRef().collection('members').doc(uid).delete();
-    await teamRef().update({ memberCount: firebase.firestore.FieldValue.increment(-1) });
+    const t = teamRef();
+    const tName = teamInfo.name || '';
+    // 팀원 wages/payments 수집
+    const [wagesSnap, paysSnap, jobsSnap] = await Promise.all([
+      t.collection('wages').where('ownerUid', '==', uid).get(),
+      t.collection('payments').where('createdBy', '==', uid).get(),
+      t.collection('jobs').get()
+    ]);
+    const jobById = {};
+    jobsSnap.docs.forEach(d => { jobById[d.id] = d.data(); });
+    // 이관 패키지 생성 (퇴출 팀원이 다음 로그인 시 읽어감)
+    const exitWorks = wagesSnap.docs.map(d => {
+      const wg = d.data(); const job = jobById[wg.jobId] || {};
+      return {
+        id: d.id, jobId: wg.jobId,
+        site: job.site || '(팀 현장)', address: job.address || '',
+        contact: job.contact || '', phone: job.phone || '',
+        memo: job.memo || '', color: job.color || '#007AFF',
+        dates: wg.dates || [], unit: wg.unit || 1,
+        wage: wg.wage, isPaid: wg.isPaid || false,
+        createdBy: wg.createdBy, teamName: tName
+      };
+    });
+    const exitPays = paysSnap.docs.map(d => {
+      const p = d.data();
+      return { id: d.id, date: p.date, amount: p.amount, note: p.note || '', workId: p.wageId || '', createdBy: p.createdBy };
+    });
+    if (exitWorks.length > 0 || exitPays.length > 0) {
+      await t.collection('memberExits').doc(uid).set({
+        works: exitWorks, payments: exitPays,
+        removedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    // 멤버 문서 삭제 + 카운트 감소
+    const batch = fsdb.batch();
+    batch.delete(t.collection('members').doc(uid));
+    batch.update(t, { memberCount: firebase.firestore.FieldValue.increment(-1) });
+    await batch.commit();
     teamInfo.memberCount = (teamInfo.memberCount || 1) - 1;
     await loadTeamMembers();
     renderMemberList();
     renderTeamSettings();
-  } catch (e) { console.error(e); alert('내보내기에 실패했습니다.'); }
+  } catch (e) { console.error(e); alert('내보내기에 실패했습니다.\n' + e.message); }
 }
 
 function renderTeamSettings() {
   const card = document.getElementById('teamCard');
   if (!card) return;
+
+  // 가입 신청 대기 중
+  if (dataMode === 'pending') {
+    card.innerHTML = `
+      <div class="set-item">
+        <div class="set-icon" style="background:rgba(255,149,0,.12)">⏳</div>
+        <div class="set-text">
+          <div class="set-item-lbl">팀 가입 승인 대기 중</div>
+          <div class="set-item-sub">${pendingTeamName ? pendingTeamName + ' · ' : ''}팀장 승인 후 합류됩니다</div>
+        </div>
+        <button class="btn-out" style="width:auto;padding:6px 12px;font-size:13px;color:var(--red);border-color:var(--red)" onclick="cancelJoinRequest()">취소</button>
+      </div>`;
+    return;
+  }
+
+  // 팀 없음
   if (dataMode !== 'team' || !teamInfo) {
     card.innerHTML = `
       <div class="set-item" style="cursor:pointer" onclick="openOv('teamCreateOv')">
@@ -1443,10 +1795,15 @@ function renderTeamSettings() {
       </div>
       <div class="set-item" style="cursor:pointer" onclick="openOv('teamJoinOv')">
         <div class="set-icon" style="background:rgba(52,199,89,.12)">🔑</div>
-        <div class="set-text"><div class="set-item-lbl">코드로 참여하기</div><div class="set-item-sub">초대 코드를 입력해 팀에 합류해요</div></div>
+        <div class="set-text"><div class="set-item-lbl">코드로 참여하기</div><div class="set-item-sub">초대 코드를 입력해 팀 가입을 신청해요</div></div>
       </div>`;
     return;
   }
+
+  // 팀 소속
+  const reqBadge = joinRequests.length > 0
+    ? `<span style="display:inline-flex;align-items:center;justify-content:center;background:var(--red);color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;font-weight:700;margin-left:4px">${joinRequests.length}</span>`
+    : '';
   card.innerHTML = `
     <div class="set-item" style="cursor:pointer" onclick="openTeamMembersOv()">
       <div class="set-icon" style="background:rgba(0,122,255,.12)">👥</div>
@@ -1457,6 +1814,14 @@ function renderTeamSettings() {
       <span style="color:var(--muted);font-size:18px">›</span>
     </div>
     ${teamRole === 'leader' ? `
+    <div class="set-item" style="cursor:pointer" onclick="openTeamRequestsOv()">
+      <div class="set-icon" style="background:rgba(52,199,89,.12)">📋</div>
+      <div class="set-text">
+        <div class="set-item-lbl">가입 신청 관리${reqBadge}</div>
+        <div class="set-item-sub">${joinRequests.length > 0 ? `대기 중인 신청 ${joinRequests.length}건` : '신청 없음'}</div>
+      </div>
+      <span style="color:var(--muted);font-size:18px">›</span>
+    </div>
     <div class="set-item">
       <div class="set-icon" style="background:rgba(255,149,0,.12)">🔢</div>
       <div class="set-text">
@@ -1464,6 +1829,10 @@ function renderTeamSettings() {
         <div class="set-item-sub" style="font-family:monospace;font-size:15px;letter-spacing:1px">${teamInfo.inviteCode}</div>
       </div>
       <button class="btn-out" style="width:auto;padding:6px 12px;font-size:13px" onclick="rotateInviteCode()">재발급</button>
+    </div>
+    <div class="set-item" style="cursor:pointer" onclick="deleteTeam()">
+      <div class="set-icon" style="background:rgba(255,59,48,.12)">🗑️</div>
+      <div class="set-text"><div class="set-item-lbl" style="color:var(--red)">팀 해체</div><div class="set-item-sub">기록은 각자 개인으로 이관돼요</div></div>
     </div>` : ''}`;
 }
 
@@ -1480,7 +1849,7 @@ function fmtDate(s) {
   const dow=['일','월','화','수','목','금','토'][dowN(y,m,d)];
   return `${String(m+1).padStart(2,'0')}.${String(d).padStart(2,'0')}(${dow})`;
 }
-function expAmt(w) { return w.wage==null ? null : w.dates.length * Number(w.wage) * Number(w.unit || 1); }
+function expAmt(w) { return w.wage==null ? null : (w.dates||[]).length * Number(w.wage) * Number(w.unit || 1); }
 function rcvAmt(wId) { return DB.payments.filter(p=>p.workId===wId).reduce((s,p)=>s+Number(p.amount),0); }
 
 function formatDatesShort(dates) {
@@ -1552,11 +1921,11 @@ function renderCal() {
   document.getElementById('calLbl').textContent=`${calY}년 ${calM+1}월`;
 
   const allDates=[];
-  DB.works.forEach(w=>w.dates.forEach(d=>{const p=parsD(d);if(p.y===calY&&p.m===calM)allDates.push(d);}));
+  DB.works.forEach(w=>(w.dates||[]).forEach(d=>{const p=parsD(d);if(p.y===calY&&p.m===calM)allDates.push(d);}));
   const workDays=new Set(allDates).size;
   let mWage=0, mUnit=0;
   DB.works.forEach(w=>{
-    const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).length;
+    const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).length;
     const u=Number(w.unit||1);
     if(w.wage!=null) mWage+=cnt*Number(w.wage)*u;
     mUnit+=cnt*u;
@@ -1574,7 +1943,7 @@ function renderCal() {
   // 연속 날짜 구간별 바 계산
   const bars=[];
   DB.works.forEach(w=>{
-    const md=w.dates.filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).sort();
+    const md=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).sort();
     if(!md.length) return;
     let rs=md[0], re=md[0];
     for(let i=1;i<=md.length;i++){
@@ -1710,29 +2079,50 @@ function openWorkOv(workId, prefillDate) {
   document.getElementById('siteSuggestions').innerHTML=[...new Set(siteSource)].map(s=>`<option value="${s}">`).join('');
   // 팀장 전용 UI
   const ownerFg=document.getElementById('ownerFg');
+  const memberWagesFg=document.getElementById('memberWagesFg');
   const visFg=document.getElementById('visibilityFg');
   if(dataMode==='team' && teamRole==='leader'){
-    ownerFg.style.display='';
-    const sel=document.getElementById('inOwner');
-    sel.innerHTML=teamMembers.map(m=>`<option value="${m.uid}">${m.uid===currentUser.uid?'나 (팀장)':(m.displayName||'팀원')}</option>`).join('');
-    if(workId){
-      const w=DB.works.find(x=>x.id===workId);
-      if(w){ sel.value=w.ownerUid||w.createdBy; sel.disabled=true; } // 소유자는 생성 후 변경 불가
-    } else { sel.value=currentUser.uid; sel.disabled=false; }
     visFg.style.display='';
-    // 기존 작업이면 해당 job의 visibility 세팅, 아니면 기본 'all'
     let initVis='all', initShared=[];
     if(workId){
+      // 수정 모드: 소유자 이름만 표시, 단일 일당/품수 입력
+      ownerFg.style.display=''; memberWagesFg.style.display='none';
       const w=DB.works.find(x=>x.id===workId);
-      if(w){ const job=DB.jobs.find(j=>j.id===w.jobId); if(job){ initVis=job.visibility||'all'; initShared=job.sharedWith||[]; } }
+      if(w){
+        const om=teamMembers.find(m=>m.uid===(w.ownerUid||w.createdBy));
+        document.getElementById('ownerName').textContent=om?(om.uid===currentUser.uid?'나 (팀장)':(om.displayName||'팀원')):'(알 수 없음)';
+        const job=DB.jobs.find(j=>j.id===w.jobId);
+        if(job){ initVis=job.visibility||'all'; initShared=job.sharedWith||[]; }
+      }
+    } else {
+      // 신규 모드: 팀원 다중 입력, 단일 일당/품수 숨김
+      ownerFg.style.display='none'; memberWagesFg.style.display='';
+      document.getElementById('wageFg').style.display='none';
+      document.getElementById('unitFg').style.display='none';
+      renderMemberWageList();
     }
     setVisibility(initVis, initShared);
   } else {
-    ownerFg.style.display='none'; visFg.style.display='none'; document.getElementById('sharedWithFg').style.display='none';
+    ownerFg.style.display='none'; memberWagesFg.style.display='none';
+    visFg.style.display='none'; document.getElementById('sharedWithFg').style.display='none';
   }
   renderColorChips();
   renderDateChips();
   openOv('workOv');
+}
+
+function renderMemberWageList() {
+  const unitOpts=[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(v=>`<option value="${v}"${v===1?' selected':''}>${v}품</option>`).join('');
+  document.getElementById('memberWageList').innerHTML=teamMembers.map(m=>`
+    <div class="mw-row">
+      <label class="mw-check-label">
+        <input type="checkbox" class="mw-check" value="${m.uid}" checked>
+        <span class="mw-name">${m.uid===currentUser.uid?'나 (팀장)':(m.displayName||'팀원')}</span>
+      </label>
+      <input type="number" class="mw-wage" placeholder="일당" value="${defaultWage||''}" inputmode="numeric">
+      <span style="font-size:11px;color:var(--muted)">원</span>
+      <select class="mw-unit">${unitOpts}</select>
+    </div>`).join('');
 }
 
 function renderDateChips() {
@@ -1947,6 +2337,68 @@ function confirmDatePick() {
   closeOv('datePickOv');
 }
 
+async function saveWorkMulti(site,address,contact,phone,memo) {
+  // 선택된 팀원 + 각자 일당/품수 수집
+  const rows=[...document.querySelectorAll('#memberWageList .mw-row')];
+  const members=[];
+  for(const row of rows){
+    const check=row.querySelector('.mw-check');
+    if(!check.checked) continue;
+    const wage=Number(row.querySelector('.mw-wage').value);
+    const unit=Number(row.querySelector('.mw-unit').value)||1;
+    const name=row.querySelector('.mw-name').textContent;
+    if(!wage){alert(`${name}의 일당을 입력해주세요.`);return;}
+    members.push({uid:check.value,wage,unit});
+  }
+  if(members.length===0){alert('한 명 이상 선택해주세요.');return;}
+
+  const {vis:jobVis,sharedWith:jobSharedWith}=getSelectedVisibility();
+
+  // job 생성 또는 기존 job 사용
+  let jobId;
+  const matched=DB.jobs.find(j=>j.site===site);
+  if(matched){
+    jobId=matched.id;
+    saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
+  } else {
+    jobId=Date.now().toString(36)+'j';
+    const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+    try{
+      await teamRef().collection('jobs').doc(jobId).set(jobData);
+      DB.jobs.push({id:jobId,...jobData});
+    }catch(e){alert(`현장 생성 중 오류\n${e.message}`);return;}
+  }
+
+  // 각 팀원 wage 일괄 생성
+  const t=teamRef();
+  const batch=fsdb.batch();
+  const newWorks=[];
+  const now=Date.now();
+  members.forEach((m,i)=>{
+    const wId=(now+i).toString(36);
+    const sortedDates=editDates.sort();
+    batch.set(t.collection('wages').doc(wId),{
+      jobId,dates:sortedDates,unit:m.unit,wage:m.wage,isPaid:false,
+      ownerUid:m.uid,createdBy:currentUser.uid,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    newWorks.push({id:wId,site,wage:m.wage,unit:m.unit,dates:sortedDates,isPaid:false,
+      color:editColor,address,contact,phone,memo,
+      createdBy:currentUser.uid,ownerUid:m.uid,jobId});
+    if(m.uid!==currentUser.uid) createNotification(m.uid,'wage_created',wId,site);
+  });
+  try{await batch.commit();}catch(e){alert(`저장 오류\n${e.message}`);return;}
+
+  DB.works.push(...newWorks);
+  DB.works.sort((a,b)=>b.dates[b.dates.length-1].localeCompare(a.dates[a.dates.length-1]));
+  localStorage.setItem('moksujilji2',JSON.stringify(DB));
+  closeAll();
+  if(curTab==='cal')renderCal();
+  else if(curTab==='work')renderWork();
+  else if(curTab==='pay')renderPay();
+}
+
 async function saveWork() {
   const site=document.getElementById('inSite').value.trim();
   const unit=Number(document.getElementById('inUnit').value);
@@ -1958,13 +2410,24 @@ async function saveWork() {
   if(!site){alert('현장명을 입력해 주세요.');return;}
   if(editDates.length===0){alert('날짜를 1개 이상 추가해 주세요.');return;}
 
-  // 팀장 전용: 소유자 / 공개 범위
   const isLeaderMode=dataMode==='team'&&teamRole==='leader';
-  const ownerUid=isLeaderMode?document.getElementById('inOwner').value:currentUser.uid;
+  const existing=workId?DB.works.find(x=>x.id===workId):null;
+
+  // 팀장 신규 다중 등록 모드
+  if(isLeaderMode&&!existing){
+    await saveWorkMulti(site,address,contact,phone,memo);
+    return;
+  }
+
+  // 단일 등록 (개인모드 / 팀원 / 팀장 수정)
+  const ownerUid=currentUser.uid;
   let jobVis='all', jobSharedWith=[];
   if(isLeaderMode){ const v=getSelectedVisibility(); jobVis=v.vis; jobSharedWith=v.sharedWith; }
-
-  const existing=workId?DB.works.find(x=>x.id===workId):null;
+  else if(existing && dataMode==='team'){
+    // 팀원이 수정 시 기존 job의 visibility 유지 (덮어쓰기 방지)
+    const existingJob=DB.jobs.find(j=>j.id===existing.jobId);
+    if(existingJob){ jobVis=existingJob.visibility||'all'; jobSharedWith=existingJob.sharedWith||[]; }
+  }
   const wageEditable=!existing||canSeeWage(existing);
   let wage;
   if(wageEditable){
@@ -2066,11 +2529,11 @@ function moveWork(d) {
 function renderWork() {
   renderNotifBanner();
   document.getElementById('workLbl').textContent=`${workY}년 ${workM+1}월`;
-  const filtered=DB.works.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}));
-  const totalDays=new Set(filtered.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
+  const filtered=DB.works.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}));
+  const totalDays=new Set(filtered.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
   const totalWage=filtered.reduce((s,w)=>{
     if(w.wage==null) return s;
-    const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}).length;
+    const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}).length;
     return s+cnt*Number(w.wage)*Number(w.unit||1);
   },0);
   const isCurMonth=workY===TODAY.getFullYear()&&workM===TODAY.getMonth();
@@ -2117,13 +2580,14 @@ function renderWorkRow(w,y,m,standalone) {
     :w.isPaid
     ?'<span class="wi-badge badge-paid">정산완료</span>'
     :(rcv>0?'<span class="wi-badge badge-partial">부분정산</span>':'<span class="wi-badge badge-unpaid">미정산</span>');
-  const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;});
+  const mDates=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;});
   const u=Number(w.unit||1);
   const total=wageVisible?mDates.length*Number(w.wage)*u:null;
   const calc=wageVisible?(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})():'';
   const c=getColor(w.color||'orange');
   const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="delWork('${w.id}')">🗑</button>`:'';
-  const titleHtml=standalone?`<div class="wi-site">${w.site}</div>`:(dataMode==='team'?`<div class="wi-who">${memberName(w.ownerUid||w.createdBy)}</div>`:'');
+  const teamBadge=w.teamName?`<span style="font-size:10px;background:var(--chip-bg);color:var(--pri);border-radius:6px;padding:1px 6px;margin-left:6px;font-weight:600">${w.teamName}</span>`:'';
+  const titleHtml=standalone?`<div class="wi-site">${w.site}${teamBadge}</div>`:(dataMode==='team'?`<div class="wi-who">${memberName(w.ownerUid||w.createdBy)}</div>`:'');
   return `
     <div class="witem"${standalone?` style="border-left:4px solid ${c.border}"`:''}>
       <div class="wi-main">
@@ -2302,13 +2766,13 @@ function renderStat() {
   const works=statBase.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
   let mWage=0, mWageBase=0, sUnit=0;
   works.forEach(w=>{
-    const cnt=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
+    const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
     const u=Number(w.unit||1);
     mWage+=cnt*Number(w.wage)*u;
     mWageBase+=cnt*Number(w.wage); // 품수 제외 — 순수 일당 기준
     sUnit+=cnt*u;
   });
-  const workDays=new Set(works.flatMap(w=>w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
+  const workDays=new Set(works.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
   const allOutstanding=statBase.reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
   const avgWage=workDays>0?Math.round(mWageBase/workDays):0;
@@ -2334,7 +2798,7 @@ function renderStat() {
   const wl=document.getElementById('statWList');
   if(works.length===0){wl.innerHTML=`<div class="es"><div class="es-icon">📊</div><div class="es-title">${statMonthLbl} 작업 기록이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>수입 통계가 자동으로 계산돼요</div></div>`;return;}
   wl.innerHTML=works.map(w=>{
-    const mDates=w.dates.filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;});
+    const mDates=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;});
     const u=Number(w.unit||1);
     const total=mDates.length*Number(w.wage)*u;
     const calc=(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})();

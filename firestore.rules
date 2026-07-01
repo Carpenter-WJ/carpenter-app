@@ -32,13 +32,8 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.leaderUid == request.auth.uid
         && request.resource.data.memberCount == 1;
-      allow update: if isTeamLeader(teamId, request.auth.uid)
-        || (
-          request.auth != null
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
-          && request.resource.data.memberCount == resource.data.memberCount + 1
-          && existsAfter(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid))
-        );
+      // 팀 문서 업데이트는 팀장만 (가입 신청 승인, 멤버 카운트 증감 포함)
+      allow update: if isTeamLeader(teamId, request.auth.uid);
       allow delete: if false;
 
       match /members/{memberUid} {
@@ -46,18 +41,37 @@ service cloud.firestore {
           && (request.auth.uid == memberUid || isTeamMember(teamId, request.auth.uid));
         allow list: if isTeamMember(teamId, request.auth.uid);
 
+        // 팀장이 자신을 리더로 등록 (팀 생성 시)
+        // 또는 팀장이 승인된 신청자를 멤버로 등록
         allow create: if request.auth != null && request.auth.uid == memberUid
-          && (
-            (request.resource.data.role == 'leader'
-              && get(/databases/$(database)/documents/teams/$(teamId)).data.leaderUid == memberUid)
-            ||
-            (request.resource.data.role == 'member'
-              && get(/databases/$(database)/documents/teams/$(teamId)).data.memberCount
-                 < get(/databases/$(database)/documents/teams/$(teamId)).data.maxMembers)
-          );
+            && request.resource.data.role == 'leader'
+            && get(/databases/$(database)/documents/teams/$(teamId)).data.leaderUid == memberUid
+          || (isTeamLeader(teamId, request.auth.uid)
+              && request.resource.data.role == 'member');
 
         allow update: if isTeamLeader(teamId, request.auth.uid);
         allow delete: if isTeamLeader(teamId, request.auth.uid);
+      }
+
+      // 가입 신청 — 코드 확인 후 팀장 승인 대기
+      match /joinRequests/{requestUid} {
+        // 본인 신청만 가능, 이미 멤버면 불가
+        allow create: if request.auth != null && request.auth.uid == requestUid
+          && !exists(/databases/$(database)/documents/teams/$(teamId)/members/$(requestUid));
+        // 팀장은 전체 조회, 신청자는 본인 것만
+        allow read: if isTeamLeader(teamId, request.auth.uid)
+          || (request.auth != null && request.auth.uid == requestUid);
+        // 승인/거절은 팀장만
+        allow update: if isTeamLeader(teamId, request.auth.uid);
+        // 팀장 또는 신청자 본인이 취소 가능
+        allow delete: if isTeamLeader(teamId, request.auth.uid)
+          || (request.auth != null && request.auth.uid == requestUid);
+      }
+
+      // 강제퇴출 팀원 기록 이관 패키지 — 팀장이 작성, 퇴출 팀원 본인만 읽고 삭제
+      match /memberExits/{exitUid} {
+        allow create, update: if isTeamLeader(teamId, request.auth.uid);
+        allow read, delete: if request.auth != null && request.auth.uid == exitUid;
       }
 
       // jobs = 현장 정보(주소/연락처/메모/공개범위 등)만 보관하는 공유 마스터 문서.
@@ -82,7 +96,7 @@ service cloud.firestore {
       match /wages/{wageId} {
         allow read: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid)
-              && resource.data.get('ownerUid', resource.data.createdBy) == request.auth.uid);
+              && resource.data.ownerUid == request.auth.uid);
         // 팀원은 본인 것만, 팀장은 누구 것이든 ownerUid를 지정해 생성 가능.
         allow create: if isTeamMember(teamId, request.auth.uid)
           && request.resource.data.createdBy == request.auth.uid
@@ -91,7 +105,7 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/teams/$(teamId)/jobs/$(request.resource.data.jobId));
         allow update, delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid)
-              && resource.data.get('ownerUid', resource.data.createdBy) == request.auth.uid);
+              && resource.data.ownerUid == request.auth.uid);
       }
 
       match /payments/{paymentId} {
