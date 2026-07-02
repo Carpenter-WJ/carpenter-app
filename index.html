@@ -643,6 +643,13 @@
       <button onclick="closeOv('workOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
     </div>
     <input type="hidden" id="editWorkId">
+    <!-- 팀 모드: 기록 유형 선택 토글 (신규 추가 시에만 표시) -->
+    <div id="recordTypeFg" style="display:none;margin-bottom:14px">
+      <div style="display:flex;background:var(--border);border-radius:12px;padding:3px;gap:2px">
+        <button id="btnTeamRec" onclick="setRecordType('team')" style="flex:1;padding:8px;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;background:var(--card);color:var(--text)">팀 기록</button>
+        <button id="btnPersonalRec" onclick="setRecordType('personal')" style="flex:1;padding:8px;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;background:transparent;color:var(--muted)">개인 기록</button>
+      </div>
+    </div>
     <!-- 팀장 신규: 팀원 다중 선택 + 개별 일당 -->
     <div id="memberWagesFg" style="display:none;margin-bottom:4px">
       <div style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:8px">참여 팀원 및 일당</div>
@@ -1055,6 +1062,7 @@ applyTheme();
 // ── 기본 일당 ──
 let defaultWage = localStorage.getItem('defaultWage') || '';
 let userDisplayName = ''; // 사용자 설정 닉네임 (구글 이름과 별개)
+let workEntryMode = 'team'; // 팀 모드에서 기록 추가 시 'team' | 'personal'
 function saveDefWage(v) { defaultWage = v; localStorage.setItem('defaultWage', v); }
 
 // ── 설정 탭 렌더 ──
@@ -1117,11 +1125,13 @@ function teamRef() { return fsdb.collection('teams').doc(activeTeamId); }
 // 일당/정산금액을 볼 수 있는지: 개인 모드는 항상 true, 팀 모드는 팀장 또는 본인 작성건만
 function canSeeWage(w) {
   if (dataMode !== 'team') return true;
+  if (w.isPersonal) return true; // 개인 날일 기록은 항상 본인 것
   const owner = w.ownerUid || w.createdBy;
   return teamRole === 'leader' || owner === currentUser.uid;
 }
 function canDeleteJob(w) {
   if (dataMode !== 'team') return true;
+  if (w.isPersonal) return true; // 개인 날일 기록은 항상 본인이 삭제 가능
   const owner = w.ownerUid || w.createdBy;
   return teamRole === 'leader' || owner === currentUser.uid;
 }
@@ -1132,8 +1142,10 @@ async function save() {
   try {
     if (dataMode === 'team') {
       const t = teamRef();
+      const personalWorksIds = new Set(DB.works.filter(w => w.isPersonal).map(w => w.id));
       const batch = fsdb.batch();
       DB.works.forEach(w => {
+        if (w.isPersonal) return; // 개인 날일 기록은 팀 wages에서 제외
         if (!canSeeWage(w)) return;
         batch.set(t.collection('wages').doc(w.id), {
           jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, isPaid: w.isPaid,
@@ -1142,10 +1154,21 @@ async function save() {
         });
       });
       DB.payments.forEach(p => {
+        if (personalWorksIds.has(p.workId)) return; // 개인 날일 정산은 팀 payments에서 제외
         const { workId, ...rest } = p;
         batch.set(t.collection('payments').doc(p.id), { ...rest, wageId: workId, createdBy: p.createdBy });
       });
       await batch.commit();
+      // 개인 날일 기록은 users/{uid}/works + payments에 저장
+      const personalWorks = DB.works.filter(w => w.isPersonal);
+      const personalPays = DB.payments.filter(p => personalWorksIds.has(p.workId));
+      if (personalWorks.length > 0 || personalPays.length > 0) {
+        const ref = fsdb.collection('users').doc(currentUser.uid);
+        const pBatch = fsdb.batch();
+        personalWorks.forEach(w => pBatch.set(ref.collection('works').doc(w.id), w));
+        personalPays.forEach(p => pBatch.set(ref.collection('payments').doc(p.id), p));
+        await pBatch.commit();
+      }
     } else {
       const ref = fsdb.collection('users').doc(currentUser.uid);
       const batch = fsdb.batch();
@@ -1206,6 +1229,21 @@ async function loadTeamData() {
   });
   DB.notifications = notifSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   teamMembers = membersSnap.docs.map(d => d.data()).sort((a, b) => (a.role === 'leader' ? -1 : b.role === 'leader' ? 1 : 0));
+  // 팀 기록과 함께 개인 날일 기록 + 정산도 로드 (isPersonal: true 태그로 구분)
+  try {
+    const [personalWorksSnap, personalPaysSnap] = await Promise.all([
+      fsdb.collection('users').doc(myUid).collection('works').get(),
+      fsdb.collection('users').doc(myUid).collection('payments').get()
+    ]);
+    if (!personalWorksSnap.empty) {
+      const personalWorks = personalWorksSnap.docs.map(d => ({ ...d.data(), isPersonal: true }));
+      DB.works = [...DB.works, ...personalWorks];
+    }
+    if (!personalPaysSnap.empty) {
+      const personalPays = personalPaysSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      DB.payments = [...DB.payments, ...personalPays];
+    }
+  } catch(e) { console.warn('개인 날일 기록 로드 오류:', e.message); }
   updateNotifBadge();
 }
 
@@ -2133,7 +2171,8 @@ function openWorkOv(workId, prefillDate) {
   const ownerFg=document.getElementById('ownerFg');
   const memberWagesFg=document.getElementById('memberWagesFg');
   const visFg=document.getElementById('visibilityFg');
-  if(dataMode==='team' && teamRole==='leader'){
+  const editingPersonal=workId&&DB.works.find(x=>x.id===workId)?.isPersonal;
+  if(dataMode==='team' && teamRole==='leader' && !editingPersonal){
     visFg.style.display='';
     let initVis='all', initShared=[];
     if(workId){
@@ -2157,6 +2196,20 @@ function openWorkOv(workId, prefillDate) {
   } else {
     ownerFg.style.display='none'; memberWagesFg.style.display='none';
     visFg.style.display='none'; document.getElementById('sharedWithFg').style.display='none';
+    document.getElementById('wageFg').style.display=wageEditable?'':'none';
+    document.getElementById('unitFg').style.display='';
+  }
+  // 기록 유형 토글 (팀 모드 신규 추가 시에만)
+  const recordTypeFg=document.getElementById('recordTypeFg');
+  if(dataMode==='team' && !workId){
+    recordTypeFg.style.display='';
+    workEntryMode='team';
+    document.getElementById('btnTeamRec').style.background='var(--card)';
+    document.getElementById('btnTeamRec').style.color='var(--text)';
+    document.getElementById('btnPersonalRec').style.background='transparent';
+    document.getElementById('btnPersonalRec').style.color='var(--muted)';
+  } else {
+    recordTypeFg.style.display='none';
   }
   renderColorChips();
   renderDateChips();
@@ -2175,6 +2228,40 @@ function renderMemberWageList() {
       <span style="font-size:11px;color:var(--muted)">원</span>
       <select class="mw-unit">${unitOpts}</select>
     </div>`).join('');
+}
+
+function setRecordType(type) {
+  workEntryMode = type;
+  const isTeam = type === 'team';
+  const btnT = document.getElementById('btnTeamRec');
+  const btnP = document.getElementById('btnPersonalRec');
+  btnT.style.background = isTeam ? 'var(--card)' : 'transparent';
+  btnT.style.color = isTeam ? 'var(--text)' : 'var(--muted)';
+  btnP.style.background = isTeam ? 'transparent' : 'var(--card)';
+  btnP.style.color = isTeam ? 'var(--muted)' : 'var(--text)';
+  if (!isTeam) {
+    // 개인 기록: 팀장 전용 UI 숨기고 단일 일당 입력으로 전환
+    document.getElementById('memberWagesFg').style.display = 'none';
+    document.getElementById('ownerFg').style.display = 'none';
+    document.getElementById('wageFg').style.display = '';
+    document.getElementById('unitFg').style.display = '';
+    document.getElementById('visibilityFg').style.display = 'none';
+    document.getElementById('sharedWithFg').style.display = 'none';
+  } else {
+    // 팀 기록: 역할별 UI 복원
+    if (teamRole === 'leader') {
+      document.getElementById('memberWagesFg').style.display = '';
+      document.getElementById('wageFg').style.display = 'none';
+      document.getElementById('unitFg').style.display = 'none';
+      document.getElementById('visibilityFg').style.display = '';
+      document.getElementById('sharedWithFg').style.display = 'none';
+      setVisibility('all');
+      renderMemberWageList();
+    } else {
+      document.getElementById('wageFg').style.display = '';
+      document.getElementById('unitFg').style.display = '';
+    }
+  }
 }
 
 function renderDateChips() {
@@ -2464,6 +2551,34 @@ async function saveWork() {
 
   const isLeaderMode=dataMode==='team'&&teamRole==='leader';
   const existing=workId?DB.works.find(x=>x.id===workId):null;
+  const isPersonalSave=dataMode==='team'&&(existing?!!existing.isPersonal:workEntryMode==='personal');
+
+  // 팀 모드에서 개인 날일 기록 저장 (users/{uid}/works)
+  if(isPersonalSave){
+    const wage=Number(document.getElementById('inWage').value);
+    if(!wage){alert('일당을 입력해 주세요.');return;}
+    let savedW;
+    if(existing){
+      existing.site=site;existing.unit=unit;existing.dates=[...editDates].sort();
+      existing.color=editColor;existing.address=address;existing.contact=contact;
+      existing.phone=phone;existing.memo=memo;existing.wage=wage;
+      savedW=existing;
+    } else {
+      const wId=Date.now().toString(36);
+      savedW={id:wId,site,address,contact,phone,memo,wage,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
+      DB.works.push(savedW);
+    }
+    DB.works.sort((a,b)=>(b.dates[b.dates.length-1]||'').localeCompare(a.dates[a.dates.length-1]||''));
+    localStorage.setItem('moksujilji2',JSON.stringify(DB));
+    try{
+      await fsdb.collection('users').doc(currentUser.uid).collection('works').doc(savedW.id).set(savedW);
+    }catch(e){console.error('개인 기록 저장 오류:',e);alert('저장 오류: '+e.message);return;}
+    closeAll();
+    if(curTab==='cal')renderCal();
+    else if(curTab==='work')renderWork();
+    else if(curTab==='pay')renderPay();
+    return;
+  }
 
   // 팀장 신규 다중 등록 모드
   if(isLeaderMode&&!existing){
@@ -2550,12 +2665,22 @@ async function delWork(id) {
   if (currentUser) {
     try {
       if (dataMode === 'team') {
-        const t = teamRef();
-        const batch = fsdb.batch();
-        // wages만 삭제 (jobs는 다른 팀원이 같은 현장을 참조 중일 수 있어 그대로 둠)
-        batch.delete(t.collection('wages').doc(id));
-        DB.payments.filter(p=>p.workId===id).forEach(p=>batch.delete(t.collection('payments').doc(p.id)));
-        await batch.commit();
+        const work = DB.works.find(x => x.id === id);
+        if (work && work.isPersonal) {
+          // 개인 날일 기록: users/{uid}/works에서 삭제
+          const ref = fsdb.collection('users').doc(currentUser.uid);
+          const batch = fsdb.batch();
+          batch.delete(ref.collection('works').doc(id));
+          DB.payments.filter(p=>p.workId===id).forEach(p=>batch.delete(ref.collection('payments').doc(p.id)));
+          await batch.commit();
+        } else {
+          const t = teamRef();
+          const batch = fsdb.batch();
+          // wages만 삭제 (jobs는 다른 팀원이 같은 현장을 참조 중일 수 있어 그대로 둠)
+          batch.delete(t.collection('wages').doc(id));
+          DB.payments.filter(p=>p.workId===id).forEach(p=>batch.delete(t.collection('payments').doc(p.id)));
+          await batch.commit();
+        }
       } else {
         const ref = fsdb.collection('users').doc(currentUser.uid);
         const batch = fsdb.batch();
@@ -2638,8 +2763,9 @@ function renderWorkRow(w,y,m,standalone) {
   const calc=wageVisible?(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})():'';
   const c=getColor(w.color||'orange');
   const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="delWork('${w.id}')">🗑</button>`:'';
-  const teamBadge=w.teamName?`<span style="font-size:10px;background:var(--chip-bg);color:var(--pri);border-radius:6px;padding:1px 6px;margin-left:6px;font-weight:600">${w.teamName}</span>`:'';
-  const titleHtml=standalone?`<div class="wi-site">${w.site}${teamBadge}</div>`:(dataMode==='team'?`<div class="wi-who">${memberName(w.ownerUid||w.createdBy)}</div>`:'');
+  const teamBadge=!w.isPersonal&&w.teamName?`<span style="font-size:10px;background:var(--chip-bg);color:var(--pri);border-radius:6px;padding:1px 6px;margin-left:6px;font-weight:600">${w.teamName}</span>`:'';
+  const personalBadge=w.isPersonal&&dataMode==='team'?`<span style="font-size:10px;background:rgba(52,199,89,.15);color:#34C759;border-radius:6px;padding:1px 6px;margin-left:6px;font-weight:600">개인</span>`:'';
+  const titleHtml=standalone?`<div class="wi-site">${w.site}${teamBadge}${personalBadge}</div>`:(dataMode==='team'?`<div class="wi-who">${memberName(w.ownerUid||w.createdBy)}</div>`:'');
   return `
     <div class="witem"${standalone?` style="border-left:4px solid ${c.border}"`:''}>
       <div class="wi-main">
@@ -2795,7 +2921,13 @@ async function delPay(id) {
   if (currentUser) {
     try {
       if (dataMode === 'team') {
-        await teamRef().collection('payments').doc(id).delete();
+        const pay = DB.payments.find(p => p.id === id);
+        const isPersonalPay = pay && !!DB.works.find(w => w.id === pay.workId)?.isPersonal;
+        if (isPersonalPay) {
+          await fsdb.collection('users').doc(currentUser.uid).collection('payments').doc(id).delete();
+        } else {
+          await teamRef().collection('payments').doc(id).delete();
+        }
       } else {
         await fsdb.collection('users').doc(currentUser.uid).collection('payments').doc(id).delete();
       }
