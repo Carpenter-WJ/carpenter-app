@@ -1471,7 +1471,6 @@ async function createTeam() {
       await fsdb.collection('inviteCodes').doc(code).set({
         teamId, createdAt: firebase.firestore.FieldValue.serverTimestamp(), active: true
       });
-      await migrateToTeam(teamDoc);
       closeOv('teamCreateOv');
       document.getElementById('inTeamName').value = '';
       alert(`팀이 생성됐어요!\n초대 코드: ${code}\n\n페이지를 새로고침합니다.`);
