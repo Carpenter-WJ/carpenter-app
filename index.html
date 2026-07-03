@@ -448,6 +448,38 @@
     #ptrInd { position:fixed; top:calc(env(safe-area-inset-top,0px) + 58px); left:50%; transform:translateX(-50%) translateY(-8px); background:var(--pri); color:#fff; font-size:12px; font-weight:700; padding:6px 16px; border-radius:20px; opacity:0; transition:opacity .2s; z-index:300; pointer-events:none; white-space:nowrap; }
     #toast { position:fixed; bottom:calc(72px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%) translateY(12px); background:rgba(28,28,30,.93); color:#fff; padding:11px 20px; border-radius:22px; font-size:14px; font-weight:600; opacity:0; transition:opacity .25s, transform .25s; z-index:500; pointer-events:none; white-space:nowrap; }
     #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* 수입 추이 차트 */
+    .income-chart-wrap { margin:0 14px 4px; background:var(--card); border-radius:16px; padding:16px 14px 8px; }
+    .income-chart-title { font-size:13px; font-weight:700; color:var(--muted); margin-bottom:12px; }
+
+    /* 내보내기 툴바 */
+    .export-toolbar { display:flex; gap:8px; padding:0 14px 14px; }
+    .export-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:12px 8px; background:var(--card); border:none; border-radius:13px; font-size:13px; font-weight:700; color:var(--text); cursor:pointer; font-family:inherit; }
+    .export-btn:active { opacity:.7; }
+
+    /* 프리미엄 예고 카드 */
+    .prem-section { padding:0 14px 32px; }
+    .prem-section-title { font-size:12px; font-weight:700; color:var(--muted); margin-bottom:10px; letter-spacing:.5px; text-transform:uppercase; }
+    .prem-card { background:var(--card); border-radius:16px; padding:20px; margin-bottom:10px; position:relative; overflow:hidden; opacity:.85; }
+    .prem-card::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.03) 8px,rgba(0,0,0,.03) 16px); pointer-events:none; }
+    .prem-badge { display:inline-block; font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; background:var(--pri); color:#fff; margin-bottom:10px; opacity:.8; }
+    .prem-card-title { font-size:15px; font-weight:700; margin-bottom:5px; }
+    .prem-card-desc { font-size:13px; color:var(--muted); line-height:1.6; }
+    .prem-lock-icon { position:absolute; top:16px; right:16px; font-size:18px; opacity:.4; }
+
+    /* 인쇄 */
+    @media print {
+      .tab-bar, .fab, .ov, #ptrInd, #toast, .stat-nav,
+      .export-toolbar, .prem-section, #page-cal, #page-work,
+      #page-pay, #page-set { display:none !important; }
+      .page { display:none !important; }
+      #page-stat { display:block !important; }
+      body { background:#fff; color:#000; }
+      .stat-grid { padding:12px 0; }
+      .sbox { border:1px solid #ddd; }
+      .income-chart-wrap { border:1px solid #ddd; }
+    }
   </style>
 </head>
 <body>
@@ -547,10 +579,40 @@
     <span class="sm" id="statLbl"></span>
     <button onclick="moveStat(1)">›</button>
   </div>
+  <div class="income-chart-wrap">
+    <div class="income-chart-title">최근 6개월 수입 추이</div>
+    <div id="incomeChart"></div>
+  </div>
+  <div style="height:10px"></div>
   <div class="stat-grid" id="statGrid"></div>
   <div class="sec">
     <div class="sec-title" id="statSecTitle">이번 달 작업 내역</div>
     <div class="card" id="statWList"></div>
+  </div>
+  <div class="export-toolbar">
+    <button class="export-btn" onclick="exportCSV()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      CSV 내보내기
+    </button>
+    <button class="export-btn" onclick="printReport()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      PDF 출력
+    </button>
+  </div>
+  <div class="prem-section">
+    <div class="prem-section-title">곧 출시</div>
+    <div class="prem-card">
+      <div class="prem-lock-icon">🔒</div>
+      <div class="prem-badge">PREMIUM</div>
+      <div class="prem-card-title">미수금 자동 알림</div>
+      <div class="prem-card-desc">30일 이상 미수금이 남은 현장이 있으면<br>자동으로 알림을 보내드려요</div>
+    </div>
+    <div class="prem-card">
+      <div class="prem-lock-icon">🔒</div>
+      <div class="prem-badge">PREMIUM</div>
+      <div class="prem-card-title">전체 기간 수입 분석</div>
+      <div class="prem-card-desc">월별 수입 추이를 전체 기간으로 조회하고<br>연간 통계를 한눈에 확인할 수 있어요</div>
+    </div>
   </div>
 </div>
 
@@ -3003,8 +3065,56 @@ function moveStat(d) {
   statM+=d; if(statM>11){statM=0;statY++;} if(statM<0){statM=11;statY--;} renderStat();
 }
 
+function renderIncomeChart() {
+  const months=[];
+  for(let i=5;i>=0;i--){
+    let y=TODAY.getFullYear(), m=TODAY.getMonth()-i;
+    if(m<0){m+=12;y--;}
+    const wage=DB.works.filter(w=>w.wage!=null&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
+      .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
+    months.push({y,m,wage,lbl:`${m+1}월`});
+  }
+  const max=Math.max(...months.map(x=>x.wage),1);
+  const chartH=90,padB=32,barW=30,gap=10;
+  const totalW=months.length*(barW+gap)-gap;
+  const bars=months.map((mo,i)=>{
+    const x=i*(barW+gap);
+    const barH=Math.max(4,Math.round((mo.wage/max)*chartH));
+    const y=chartH-barH;
+    const isCur=mo.y===statY&&mo.m===statM;
+    const fill=isCur?'var(--pri)':'var(--border)';
+    const textFill=isCur?'var(--pri)':'var(--muted)';
+    const amtLbl=mo.wage>0?`${(mo.wage/10000).toFixed(0)}만`:'';
+    return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="5" fill="${fill}" opacity="${isCur?'1':'0.7'}"/>
+      ${amtLbl?`<text x="${x+barW/2}" y="${y-5}" text-anchor="middle" font-size="9" fill="${textFill}" font-weight="700">${amtLbl}</text>`:''}
+      <text x="${x+barW/2}" y="${chartH+15}" text-anchor="middle" font-size="10" fill="${textFill}" font-weight="${isCur?'700':'400'}">${mo.lbl}</text>`;
+  }).join('');
+  document.getElementById('incomeChart').innerHTML=`<svg viewBox="-4 -18 ${totalW+8} ${chartH+padB}" width="100%" style="overflow:visible;display:block">${bars}</svg>`;
+}
+
+function exportCSV() {
+  if(dataMode==='team'&&teamRole!=='leader'){alert('팀원 모드에서는 전체 데이터 내보내기가 제한돼요.');return;}
+  const rows=[['현장명','날짜','일당','품수','총금액','정산상태','수령액']];
+  DB.works.filter(w=>w.wage!=null).forEach(w=>{
+    const exp=expAmt(w), rcv=rcvAmt(w.id);
+    const status=w.isPaid?'정산완료':(rcv>0?'부분정산':'미정산');
+    rows.push([w.site,(w.dates||[]).join(' '),w.wage,w.unit||1,exp,status,rcv]);
+  });
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`목수일지_${todayStr()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function printReport() {
+  window.print();
+}
+
 function renderStat() {
   document.getElementById('statLbl').textContent=`${statY}년 ${statM+1}월`;
+  renderIncomeChart();
   // 팀 모드에서 일반 팀원은 일당을 볼 수 있는(=본인이 등록한) 현장만 통계에 포함
   const statBase=(dataMode==='team'&&teamRole!=='leader')?DB.works.filter(w=>w.wage!=null):DB.works;
   const works=statBase.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
