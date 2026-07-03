@@ -1950,8 +1950,10 @@ async function removeMember(uid) {
     });
     if (exitWorks.length > 0 || exitPays.length > 0) {
       const exitDocId = `${uid}_${Date.now()}`;
+      const exitMember = teamMembers.find(m => m.uid === uid);
+      const exitDisplayName = exitMember?.customName || exitMember?.displayName || '';
       await t.collection('memberExits').doc(exitDocId).set({
-        uid, works: exitWorks, payments: exitPays,
+        uid, displayName: exitDisplayName, works: exitWorks, payments: exitPays,
         exitedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     }
@@ -2249,7 +2251,7 @@ function openDayOv(ds) {
   selDate=ds;
   const h=getHoli(ds);
   document.getElementById('dayOvTitle').textContent=fmtDate(ds)+(h?` · ${h}`:'');
-  const works=DB.works.filter(w=>w.dates.includes(ds));
+  const works=DB.works.filter(w=>(w.dates||[]).includes(ds));
   if(works.length===0){
     document.getElementById('dayOvWorks').innerHTML='<div class="empty" style="padding:16px 0 8px">이 날 작업 기록이 없습니다</div>';
   } else {
@@ -2664,7 +2666,7 @@ async function saveWorkMulti(site,address,contact,phone,memo) {
   try{await batch.commit();}catch(e){alert(`저장 오류\n${e.message}`);return;}
 
   DB.works.push(...newWorks);
-  DB.works.sort((a,b)=>b.dates[b.dates.length-1].localeCompare(a.dates[a.dates.length-1]));
+  DB.works.sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''));
   localStorage.setItem('moksujilji2',JSON.stringify(DB));
   closeAll();
   if(curTab==='cal')renderCal();
@@ -2778,7 +2780,7 @@ async function saveWork() {
       createNotification(ownerUid,'wage_created',wId,site);
     }
   }
-  DB.works.sort((a,b)=>b.dates[b.dates.length-1].localeCompare(a.dates[a.dates.length-1]));
+  DB.works.sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''));
   save(); closeAll();
   if(curTab==='cal')renderCal();
   else if(curTab==='work')renderWork();
@@ -2853,7 +2855,7 @@ function renderWork() {
   const el=document.getElementById('wList');
   if(filtered.length===0){
     const isAll = DB.works.length===0;
-    const ctaBtn = isAll ? `<button onclick="openWorkOv(null,todayStr())" style="margin-top:20px;padding:12px 28px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">첫 현장 추가하기</button>` : '';
+    const ctaBtn = isAll ? `<button onclick="openWorkOv(null,todayStr())" style="margin-top:20px;padding:12px 28px;background:var(--pri);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">첫 현장 추가하기</button>` : '';
     el.innerHTML=`<div class="es"><div class="es-icon">${isAll?'🏗️':'📋'}</div><div class="es-title">${isAll?'아직 작업 기록이 없어요':monthLbl+' 작업 기록이 없어요'}</div><div class="es-desc">${isAll?'현장명, 날짜, 일당을<br>기록해보세요':'이 달엔 작업 기록이 없어요'}</div>${ctaBtn}</div>`;
     return;
   }
@@ -2865,7 +2867,7 @@ function renderWork() {
     byKey[key].items.push(w);
   });
   groups.sort((a,b)=>{
-    const la=a.items[0].dates[a.items[0].dates.length-1], lb=b.items[0].dates[b.items[0].dates.length-1];
+    const la=a.items[0].dates?.[a.items[0].dates.length-1]||'', lb=b.items[0].dates?.[b.items[0].dates.length-1]||'';
     return lb.localeCompare(la);
   });
 
@@ -3113,7 +3115,8 @@ function renderMemberStats() {
   el.innerHTML = allUids.map(uid => {
     const member = teamMembers.find(m => m.uid === uid);
     const isActive = !!member;
-    const name = member?.customName || member?.displayName || memberName(uid);
+    const exitEntry = teamMemberExits.find(e => e.uid === uid);
+    const name = member?.customName || member?.displayName || exitEntry?.displayName || memberName(uid);
 
     // 이 uid의 퇴장 기록 → 타임스탬프 오름차순
     const exitTimes = teamMemberExits
@@ -3233,7 +3236,7 @@ function renderStat() {
   renderMemberStats();
   // 팀 모드에서 일반 팀원은 일당을 볼 수 있는(=본인이 등록한) 현장만 통계에 포함
   const statBase=(dataMode==='team'&&teamRole!=='leader')?DB.works.filter(w=>w.wage!=null):DB.works;
-  const works=statBase.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
+  const works=statBase.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
   let mWage=0, mWageBase=0, sUnit=0;
   works.forEach(w=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
