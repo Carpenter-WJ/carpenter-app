@@ -589,6 +589,12 @@
     <div class="sec-title" id="statSecTitle">이번 달 작업 내역</div>
     <div class="card" id="statWList"></div>
   </div>
+  <div id="memberStatsSection" style="display:none">
+    <div class="sec">
+      <div class="sec-title">팀원별 현황</div>
+      <div id="memberStatsList"></div>
+    </div>
+  </div>
   <div class="export-toolbar">
     <button class="export-btn" onclick="exportCSV()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1104,6 +1110,7 @@ let activeTeamId = null;
 let teamInfo = null;       // teams/{teamId} 문서
 let teamRole = null;       // 'leader' | 'member'
 let teamMembers = [];
+let teamMemberExits = []; // {uid, exitedAt, works, payments, docId}
 let pendingTeamId = null;  // 가입 신청 대기 중인 팀 ID
 let pendingTeamName = '';  // 대기 중인 팀 이름
 let joinRequests = [];     // 팀장용 — 대기 중인 가입 신청 목록
@@ -1332,6 +1339,17 @@ async function loadTeamData() {
   });
   DB.notifications = notifSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   teamMembers = membersSnap.docs.map(d => d.data()).sort((a, b) => (a.role === 'leader' ? -1 : b.role === 'leader' ? 1 : 0));
+  teamMemberExits = [];
+  if (isLeader) {
+    try {
+      const exitsSnap = await t.collection('memberExits').get();
+      teamMemberExits = exitsSnap.docs.map(d => {
+        const data = d.data();
+        // 구 형식: doc id = uid, uid 필드 없음 / 신규 형식: uid 필드 있음
+        return { ...data, uid: data.uid || d.id, docId: d.id };
+      });
+    } catch(e) { console.warn('memberExits 로드 실패:', e.message); }
+  }
   // 팀 기록과 함께 개인 날일 기록 + 정산도 로드 (isPersonal: true 태그로 구분)
   try {
     const [personalWorksSnap, personalPaysSnap] = await Promise.all([
@@ -1392,16 +1410,24 @@ async function loadData() {
       } else {
         // 팀장에 의해 강제 퇴출됨 → memberExits 패키지 확인 후 개인 이관
         try {
-          const exitDoc = await teamRef().collection('memberExits').doc(currentUser.uid).get();
-          if (exitDoc.exists) {
-            const { works: exitWorks = [], payments: exitPays = [] } = exitDoc.data();
-            if (exitWorks.length > 0 || exitPays.length > 0) {
+          // 신규 형식(uid 필드 쿼리) + 구 형식(doc id = uid) 둘 다 처리
+          const [newExits, oldExit] = await Promise.all([
+            teamRef().collection('memberExits').where('uid', '==', currentUser.uid).get(),
+            teamRef().collection('memberExits').doc(currentUser.uid).get()
+          ]);
+          const exitDocs = [...newExits.docs, ...(oldExit.exists && !oldExit.data().uid ? [oldExit] : [])];
+          if (exitDocs.length > 0) {
+            const allWorks = exitDocs.flatMap(d => d.data().works || []);
+            const allPays = exitDocs.flatMap(d => d.data().payments || []);
+            if (allWorks.length > 0 || allPays.length > 0) {
               const batch = fsdb.batch();
-              exitWorks.forEach(w => batch.set(userRef.collection('works').doc(w.id), w));
-              exitPays.forEach(p => batch.set(userRef.collection('payments').doc(p.id), p));
+              allWorks.forEach(w => batch.set(userRef.collection('works').doc(w.id), w));
+              allPays.forEach(p => batch.set(userRef.collection('payments').doc(p.id), p));
               await batch.commit();
             }
-            await exitDoc.ref.delete();
+            const delBatch = fsdb.batch();
+            exitDocs.forEach(d => delBatch.delete(d.ref));
+            await delBatch.commit();
           }
         } catch(e) { console.warn('퇴출 이관 처리 오류:', e.message); }
         await userRef.update({ teamId: firebase.firestore.FieldValue.delete() });
@@ -1923,9 +1949,10 @@ async function removeMember(uid) {
       return { id: d.id, date: p.date, amount: p.amount, note: p.note || '', workId: p.wageId || '', createdBy: p.createdBy };
     });
     if (exitWorks.length > 0 || exitPays.length > 0) {
-      await t.collection('memberExits').doc(uid).set({
-        works: exitWorks, payments: exitPays,
-        removedAt: firebase.firestore.FieldValue.serverTimestamp()
+      const exitDocId = `${uid}_${Date.now()}`;
+      await t.collection('memberExits').doc(exitDocId).set({
+        uid, works: exitWorks, payments: exitPays,
+        exitedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     }
     // 멤버 문서 삭제 + 카운트 감소
@@ -3065,6 +3092,92 @@ function moveStat(d) {
   statM+=d; if(statM>11){statM=0;statY++;} if(statM<0){statM=11;statY--;} renderStat();
 }
 
+function renderMemberStats() {
+  const section = document.getElementById('memberStatsSection');
+  if (!section) return;
+  if (dataMode !== 'team' || teamRole !== 'leader') { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  // 현재 팀원 + 이전 팀원 uid 수집 (팀장 본인 제외)
+  const allUids = [...new Set([
+    ...teamMembers.filter(m => m.uid !== currentUser.uid).map(m => m.uid),
+    ...teamMemberExits.map(e => e.uid).filter(u => u !== currentUser.uid)
+  ])];
+
+  const el = document.getElementById('memberStatsList');
+  if (allUids.length === 0) {
+    el.innerHTML = '<div class="es" style="padding:24px 0"><div class="es-title" style="font-size:15px">팀원 기록이 없어요</div></div>';
+    return;
+  }
+
+  el.innerHTML = allUids.map(uid => {
+    const member = teamMembers.find(m => m.uid === uid);
+    const isActive = !!member;
+    const name = member?.customName || member?.displayName || memberName(uid);
+
+    // 이 uid의 퇴장 기록 → 타임스탬프 오름차순
+    const exitTimes = teamMemberExits
+      .filter(e => e.uid === uid)
+      .map(e => { const t = e.exitedAt; return t?.toMillis ? t.toMillis() : t?.seconds ? t.seconds*1000 : 0; })
+      .filter(t => t > 0)
+      .sort((a, b) => a - b);
+
+    const totalPeriods = exitTimes.length + (isActive ? 1 : 0);
+    const showLabel = totalPeriods > 1;
+
+    // 이 uid의 팀 작업 기록
+    const wages = DB.works.filter(w => !w.isPersonal && w.wage != null && (w.ownerUid === uid || (!w.ownerUid && w.createdBy === uid)));
+    if (wages.length === 0 && !isActive) return '';
+
+    // 기간별 그룹핑
+    const groups = Array.from({ length: Math.max(totalPeriods, 1) }, () => []);
+    wages.forEach(w => {
+      const maxMs = Math.max(...(w.dates||[]).map(d => new Date(d+'T00:00:00').getTime()));
+      let idx = exitTimes.findIndex(t => maxMs < t);
+      if (idx === -1) idx = exitTimes.length;
+      if (idx < groups.length) groups[idx].push(w);
+    });
+
+    const statusBadge = isActive
+      ? `<span class="wi-badge badge-paid" style="font-size:10px">현재 팀원</span>`
+      : `<span class="wi-badge" style="font-size:10px;background:var(--bg-sub);color:var(--muted)">이전 팀원</span>`;
+
+    const periodsHtml = groups.map((gWages, i) => {
+      if (gWages.length === 0) return '';
+      const total = gWages.reduce((s, w) => s + expAmt(w), 0);
+      const rcv = gWages.reduce((s, w) => s + rcvAmt(w.id), 0);
+      const unpaid = Math.max(0, total - rcv);
+      const header = showLabel ? `<div style="font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 6px;padding-top:${i>0?'10px':0};border-top:${i>0?'1px solid var(--border)':''}">${i+1}기</div>` : '';
+      const rows = gWages.sort((a,b)=>{
+        const la=(a.dates||[])[0]||'', lb=(b.dates||[])[0]||''; return la.localeCompare(lb);
+      }).map(w => {
+        const cnt = (w.dates||[]).length;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span style="color:var(--text2)">${w.site} · ${cnt}일</span>
+          <span style="font-weight:600">${fmtW(expAmt(w))}</span>
+        </div>`;
+      }).join('');
+      const unpaidColor = unpaid > 0 ? 'var(--red)' : 'var(--green)';
+      const unpaidLbl = unpaid > 0 ? `미수금 ${fmtW(unpaid)}` : '완납';
+      return `${header}${rows}
+        <div style="display:flex;justify-content:space-between;padding:7px 0 2px;font-size:13px">
+          <span style="color:var(--muted)">합계 ${fmtW(total)}</span>
+          <span style="font-weight:700;color:${unpaidColor}">${unpaidLbl}</span>
+        </div>`;
+    }).join('');
+
+    return `<div class="card" style="margin-bottom:10px;padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:700">👤 ${name}</div>
+        ${statusBadge}
+      </div>
+      ${periodsHtml || '<div style="font-size:13px;color:var(--muted);padding:4px 0">작업 기록이 없어요</div>'}
+    </div>`;
+  }).filter(Boolean).join('');
+
+  if (!el.innerHTML) el.innerHTML = '<div class="es" style="padding:24px 0"><div class="es-title" style="font-size:15px">팀원 기록이 없어요</div></div>';
+}
+
 function renderIncomeChart() {
   const months=[];
   for(let i=5;i>=0;i--){
@@ -3094,11 +3207,13 @@ function renderIncomeChart() {
 
 function exportCSV() {
   if(dataMode==='team'&&teamRole!=='leader'){alert('팀원 모드에서는 전체 데이터 내보내기가 제한돼요.');return;}
-  const rows=[['현장명','날짜','일당','품수','총금액','정산상태','수령액']];
+  const rows=[['구분','팀원명','현장명','날짜','일당','품수','총금액','정산상태','수령액']];
   DB.works.filter(w=>w.wage!=null).forEach(w=>{
     const exp=expAmt(w), rcv=rcvAmt(w.id);
     const status=w.isPaid?'정산완료':(rcv>0?'부분정산':'미정산');
-    rows.push([w.site,(w.dates||[]).join(' '),w.wage,w.unit||1,exp,status,rcv]);
+    const ownerName = dataMode==='team' ? (memberName(w.ownerUid||w.createdBy)||'') : '';
+    const section = w.isPersonal ? '개인(날일)' : (dataMode==='team' ? '팀' : '개인');
+    rows.push([section, ownerName, w.site,(w.dates||[]).join(' '),w.wage,w.unit||1,exp,status,rcv]);
   });
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
@@ -3115,6 +3230,7 @@ function printReport() {
 function renderStat() {
   document.getElementById('statLbl').textContent=`${statY}년 ${statM+1}월`;
   renderIncomeChart();
+  renderMemberStats();
   // 팀 모드에서 일반 팀원은 일당을 볼 수 있는(=본인이 등록한) 현장만 통계에 포함
   const statBase=(dataMode==='team'&&teamRole!=='leader')?DB.works.filter(w=>w.wage!=null):DB.works;
   const works=statBase.filter(w=>w.dates.some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
