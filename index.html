@@ -1289,6 +1289,45 @@ async function save() {
   } catch(e) { console.error('저장 오류:', e); }
 }
 
+// 단일 work를 Firestore에 핀포인트 저장 (팀 wages 또는 개인 works)
+async function saveOneWork(w) {
+  if (!currentUser) return;
+  if (dataMode === 'team' && !w.isPersonal) {
+    if (!canSeeWage(w)) return; // wage 수정 권한 없을 때 skip (job 정보는 saveJobInfo가 처리)
+    await teamRef().collection('wages').doc(w.id).set({
+      jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, isPaid: w.isPaid,
+      ownerUid: w.ownerUid || w.createdBy,
+      createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } else {
+    await fsdb.collection('users').doc(currentUser.uid).collection('works').doc(w.id).set(w);
+  }
+}
+
+// work의 isPaid 필드만 Firestore에 업데이트
+async function updateOneWage(w) {
+  if (!currentUser) return;
+  if (dataMode === 'team' && !w.isPersonal) {
+    await teamRef().collection('wages').doc(w.id).update({
+      isPaid: w.isPaid, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } else {
+    await fsdb.collection('users').doc(currentUser.uid).collection('works').doc(w.id).update({ isPaid: w.isPaid });
+  }
+}
+
+// 단일 payment를 Firestore에 핀포인트 저장
+async function saveOnePay(p) {
+  if (!currentUser) return;
+  const w = DB.works.find(x => x.id === p.workId);
+  if (dataMode === 'team' && !w?.isPersonal) {
+    const { workId, ...rest } = p;
+    await teamRef().collection('payments').doc(p.id).set({ ...rest, wageId: workId, createdBy: p.createdBy });
+  } else {
+    await fsdb.collection('users').doc(currentUser.uid).collection('payments').doc(p.id).set(p);
+  }
+}
+
 async function loadTeamData() {
   const t = teamRef();
   const isLeader = teamRole === 'leader';
@@ -2738,6 +2777,7 @@ async function saveWork() {
     if(!wage){alert('일당을 입력해 주세요.');return;}
   }
 
+  let _savedWork = existing; // 핀포인트 저장 대상 추적
   if(existing){
     existing.site=site;existing.unit=unit;existing.dates=editDates.sort();existing.color=editColor;
     existing.address=address;existing.contact=contact;existing.phone=phone;existing.memo=memo;
@@ -2775,13 +2815,16 @@ async function saveWork() {
     const w={id:wId,site,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
     if(dataMode==='team'){ w.createdBy=currentUser.uid; w.ownerUid=ownerUid; w.jobId=jobId; }
     DB.works.push(w);
+    _savedWork = w;
     // 팀장이 타인 대신 신규 등록 시 알림
     if(isLeaderMode && ownerUid!==currentUser.uid){
       createNotification(ownerUid,'wage_created',wId,site);
     }
   }
   DB.works.sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''));
-  save(); closeAll();
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  if (_savedWork) { try { await saveOneWork(_savedWork); } catch(e) { console.error('저장 오류:', e); } }
+  closeAll();
   if(curTab==='cal')renderCal();
   else if(curTab==='work')renderWork();
   else if(curTab==='pay')renderPay();
@@ -3024,10 +3067,12 @@ function openPayDetail(wId) {
   openOv('payDetailOv');
 }
 
-function togglePaid() {
+async function togglePaid() {
   const w=DB.works.find(x=>x.id===selWorkId);
   if(!w)return;
-  w.isPaid=!w.isPaid; save();
+  w.isPaid=!w.isPaid;
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  try { await updateOneWage(w); } catch(e) { console.error('저장 오류:', e); }
   document.getElementById('paidToggle').classList.toggle('on',w.isPaid);
   renderPay();
 }
@@ -3049,7 +3094,7 @@ function showToast(msg) {
   _toastTimer=setTimeout(()=>t.classList.remove('show'), 2500);
 }
 
-function savePayment() {
+async function savePayment() {
   const date=document.getElementById('inPayDate').value;
   const amount=Number(document.getElementById('inPayAmt').value);
   const note=document.getElementById('inPayNote').value.trim();
@@ -3058,13 +3103,15 @@ function savePayment() {
   const pay={id:Date.now().toString(36),workId:selWorkId,date,amount,note};
   if(dataMode==='team') pay.createdBy=w?(w.ownerUid||w.createdBy):currentUser.uid;
   DB.payments.push(pay);
-  if(w&&!w.isPaid&&rcvAmt(selWorkId)>=expAmt(w)) {
-    w.isPaid=true;
-    save(); closeOv('addPayOv'); openPayDetail(selWorkId); renderPay();
-    showToast('정산이 완료됐어요 ✓');
-  } else {
-    save(); closeOv('addPayOv'); openPayDetail(selWorkId); renderPay();
-  }
+  const paidNow = w && !w.isPaid && rcvAmt(selWorkId) >= expAmt(w);
+  if (paidNow) w.isPaid = true;
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  try {
+    await saveOnePay(pay);
+    if (paidNow) await updateOneWage(w);
+  } catch(e) { console.error('저장 오류:', e); }
+  closeOv('addPayOv'); openPayDetail(selWorkId); renderPay();
+  if (paidNow) showToast('정산이 완료됐어요 ✓');
 }
 
 async function delPay(id) {
