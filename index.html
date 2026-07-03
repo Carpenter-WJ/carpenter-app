@@ -2020,7 +2020,8 @@ function renderCal() {
     if(w.wage!=null) mWage+=cnt*Number(w.wage)*u;
     mUnit+=cnt*u;
   });
-  const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===calY&&d.m===calM;}).reduce((s,p)=>s+Number(p.amount),0);
+  const monthWorkIds=new Set(DB.works.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;})).map(w=>w.id));
+  const mPaid=DB.payments.filter(p=>monthWorkIds.has(p.workId)).reduce((s,p)=>s+Number(p.amount),0);
   const mUnitStr=mUnit%1===0?mUnit:mUnit.toFixed(1);
 
   document.getElementById('calSum').innerHTML=`
