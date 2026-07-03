@@ -481,6 +481,7 @@
 
 <div class="hdr">
   <h1 id="hTit">목수 일지</h1>
+  <div id="teamIndicator" class="sub" style="display:none"></div>
 </div>
 
 <!-- 달력 탭 -->
@@ -611,7 +612,7 @@
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 9h18"/><path d="M8 14h.01M12 14h.01M16 14h.01"/></svg>달력
   </button>
   <button class="tbtn" onclick="goTab('work',this)" style="position:relative">
-    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1.5"/><path d="M9 12h6M9 16h4"/></svg>기록<span id="notifBadge" class="notif-badge" style="display:none"></span>
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/><path d="M9 21v-5h6v5"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2"/></svg>현장<span id="notifBadge" class="notif-badge" style="display:none"></span>
   </button>
   <button class="tbtn" onclick="goTab('pay',this)">
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1.5 2 1.5 2-1.5 2 1.5 2-1.5 2 1.5 2-1.5 2 1.5V2l-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>정산
@@ -689,8 +690,9 @@
       </select>
     </div>
     <div class="fg">
-      <label>색상</label>
+      <label>달력 색상</label>
       <div class="color-chips" id="colorChips"></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:5px">달력에서 현장을 색으로 구분해요</div>
     </div>
     <div class="info-section">
       <div class="info-toggle" onclick="toggleInfoSection()">
@@ -868,6 +870,19 @@
       <button onclick="closeOv('teamRequestsOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
     </div>
     <div id="joinRequestList"></div>
+  </div>
+</div>
+
+<!-- 팀 합류 환영 모달 -->
+<div class="ov" id="teamWelcomeOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="text-align:center;padding:8px 0 20px">
+      <div style="font-size:52px;margin-bottom:14px">🎉</div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:12px" id="teamWelcomeTitle"></div>
+      <div style="font-size:14px;color:var(--muted);line-height:2;text-align:left;background:var(--bg);border-radius:12px;padding:14px 16px" id="teamWelcomeDesc"></div>
+    </div>
+    <button class="btn-pri" onclick="closeOv('teamWelcomeOv')">확인</button>
   </div>
 </div>
 
@@ -1122,6 +1137,25 @@ async function editDisplayName() {
 
 // ── 팀 모드 헬퍼 ──
 function teamRef() { return fsdb.collection('teams').doc(activeTeamId); }
+function updateHeader() {
+  const ind = document.getElementById('teamIndicator');
+  if (!ind) return;
+  if (dataMode === 'team' && teamInfo) {
+    const roleLbl = teamRole === 'leader' ? '팀장' : '팀원';
+    ind.textContent = `👥 ${teamInfo.name} · ${roleLbl}`;
+    ind.style.display = '';
+  } else {
+    ind.style.display = 'none';
+  }
+}
+function showTeamWelcome() {
+  if (!teamInfo) return;
+  document.getElementById('teamWelcomeTitle').textContent = `${teamInfo.name}에 합류됐어요!`;
+  document.getElementById('teamWelcomeDesc').innerHTML = teamRole === 'leader'
+    ? '✅ 팀원 일당을 대신 등록할 수 있어요<br>✅ 현장 공개 범위를 설정할 수 있어요<br>✅ 가입 신청을 승인/거절할 수 있어요<br>✅ 팀 전체 정산 현황을 확인할 수 있어요'
+    : '✅ 팀장이 등록한 현장과 내 일당을 볼 수 있어요<br>✅ 팀 일정 외 개인 날일도 따로 기록할 수 있어요<br>✅ 내 정산 내역을 직접 확인할 수 있어요';
+  openOv('teamWelcomeOv');
+}
 // 일당/정산금액을 볼 수 있는지: 개인 모드는 항상 true, 팀 모드는 팀장 또는 본인 작성건만
 function canSeeWage(w) {
   if (dataMode !== 'team') return true;
@@ -1322,7 +1356,7 @@ async function loadData() {
             teamRole = memberDoc2.exists ? memberDoc2.data().role : 'member';
             await loadTeamData();
             localStorage.setItem('moksujilji2', JSON.stringify(DB));
-            showToast('팀에 합류되었습니다!');
+            showTeamWelcome();
           } else if (reqDoc.exists && reqDoc.data().status === 'rejected') {
             // 거절됨
             await userRef.update({ pendingTeamId: firebase.firestore.FieldValue.delete() });
@@ -1357,6 +1391,7 @@ async function loadData() {
       DB = { works: parsed.works||[], payments: parsed.payments||[], jobs: parsed.jobs||[], notifications: parsed.notifications||[] };
     }
   }
+  updateHeader();
   renderCal();
   setTimeout(showOnboard, 600);
 }
@@ -1992,7 +2027,7 @@ function goTab(tab, btn) {
   document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('on'));
   document.getElementById('page-'+tab).classList.add('on');
   btn.classList.add('on');
-  const titles={cal:'목수 일지',work:'작업 기록',pay:'정산',stat:'통계',set:'설정'};
+  const titles={cal:'목수 일지',work:'현장',pay:'정산',stat:'통계',set:'설정'};
   document.getElementById('hTit').textContent=titles[tab]||'목수 일지';
   const fab=document.getElementById('fab');
   if(tab==='cal')  { renderCal(); fab.style.display='flex'; fab.onclick=()=>openWorkOv(null,todayStr()); }
