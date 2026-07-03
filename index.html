@@ -3257,13 +3257,19 @@ function renderIncomeChart() {
 
 function exportCSV() {
   if(dataMode==='team'&&teamRole!=='leader'){alert('팀원 모드에서는 전체 데이터 내보내기가 제한돼요.');return;}
-  const rows=[['구분','팀원명','현장명','날짜','일당','품수','총금액','정산상태','수령액']];
+  const short = s => s ? s.slice(5).replace('-', '/') : ''; // 'YYYY-MM-DD' → 'MM/DD'
+  const rows=[['구분','팀원명','현장명','작업기간','작업일수','일당','품수','총금액','정산상태','수령액','미수금']];
   DB.works.filter(w=>w.wage!=null).forEach(w=>{
+    const dates=(w.dates||[]).slice().sort();
+    const period = dates.length===0 ? '' : dates.length===1
+      ? short(dates[0])
+      : `${short(dates[0])} ~ ${short(dates[dates.length-1])}`;
     const exp=expAmt(w), rcv=rcvAmt(w.id);
+    const unpaid=Math.max(0,exp-rcv);
     const status=w.isPaid?'정산완료':(rcv>0?'부분정산':'미정산');
     const ownerName = dataMode==='team' ? (memberName(w.ownerUid||w.createdBy)||'') : '';
     const section = w.isPersonal ? '개인(날일)' : (dataMode==='team' ? '팀' : '개인');
-    rows.push([section, ownerName, w.site,(w.dates||[]).join(' '),w.wage,w.unit||1,exp,status,rcv]);
+    rows.push([section, ownerName, w.site, period, dates.length, w.wage, w.unit||1, exp, status, rcv, unpaid]);
   });
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
