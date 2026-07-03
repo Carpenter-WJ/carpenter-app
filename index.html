@@ -2055,15 +2055,15 @@ function renderCal() {
     if(w.wage!=null) mWage+=cnt*Number(w.wage)*u;
     mUnit+=cnt*u;
   });
-  const monthWorkIds=new Set(DB.works.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;})).map(w=>w.id));
-  const mPaid=DB.payments.filter(p=>monthWorkIds.has(p.workId)).reduce((s,p)=>s+Number(p.amount),0);
+  const monthWorks=DB.works.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}));
+  const mUnpaid=monthWorks.filter(w=>w.wage!=null&&!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
   const mUnitStr=mUnit%1===0?mUnit:mUnit.toFixed(1);
 
   document.getElementById('calSum').innerHTML=`
     <div class="cs-item"><div class="cv">${workDays}일</div><div class="cl">작업일수</div></div>
     <div class="cs-item"><div class="cv">${mUnitStr}품</div><div class="cl">품</div></div>
     <div class="cs-item"><div class="cv">${(mWage/10000).toFixed(0)}만원</div><div class="cl">총 일당</div></div>
-    <div class="cs-item"><div class="cv">${(mPaid/10000).toFixed(0)}만원</div><div class="cl">수령액</div></div>
+    <div class="cs-item"><div class="cv">${(mUnpaid/10000).toFixed(0)}만원</div><div class="cl">미수금</div></div>
   `;
 
   // 연속 날짜 구간별 바 계산
