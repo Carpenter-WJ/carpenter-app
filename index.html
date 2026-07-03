@@ -525,11 +525,16 @@
 
 <!-- 입금 탭 -->
 <div class="page" id="page-pay">
+  <div class="stat-nav">
+    <button onclick="movePay(-1)">‹</button>
+    <span class="sm" id="payLbl"></span>
+    <button onclick="movePay(1)">›</button>
+  </div>
   <div id="balArea"></div>
   <div class="sec">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div class="sec-title" style="margin-bottom:0">현장별 정산 현황</div>
-      <div id="hideCompWrap"></div>
+      <div id="payFilterWrap"></div>
     </div>
     <div class="card" id="pList"></div>
   </div>
@@ -781,7 +786,7 @@
     </div>
     <div class="sh-sub" id="pdInfo"></div>
     <div id="pdPayRows"></div>
-    <button class="btn-out" onclick="openAddPayOv()">+ 정산 추가</button>
+    <button class="btn-out" onclick="openAddPayOv()">+ 받은 금액 기록</button>
     <div class="paid-toggle">
       <div>
         <div class="pt-label">정산 완료</div>
@@ -1044,13 +1049,14 @@ const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
+let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
 let curTab = 'cal';
 let selDate = null;
 let selWorkId = null;
 let editDates = [];
 let editColor = 'orange';
-let hideComp = false;
-function toggleHideComp() { hideComp=!hideComp; renderPay(); }
+function movePay(d) { payM+=d; if(payM>11){payM=0;payY++;} if(payM<0){payM=11;payY--;} renderPay(); }
+function setPayFilter(f) { payFilter=f; renderPay(); }
 
 function toggleInfoSection(force) {
   const body=document.getElementById('infoBody');
@@ -2824,27 +2830,41 @@ function renderWorkRow(w,y,m,standalone) {
 
 // ── 입금 탭 ──
 function renderPay() {
-  const payableWorks=DB.works.filter(w=>w.wage!=null);
-  const totalExp=payableWorks.reduce((s,w)=>s+expAmt(w),0);
-  const totalRcv=payableWorks.reduce((s,w)=>s+rcvAmt(w.id),0);
-  const totalOutstanding=payableWorks.reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+  document.getElementById('payLbl').textContent=`${payY}년 ${payM+1}월`;
+
+  const monthWorks=DB.works.filter(w=>w.wage!=null&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
+  const mWage=monthWorks.reduce((s,w)=>{
+    const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}).length;
+    return s+cnt*Number(w.wage)*Number(w.unit||1);
+  },0);
+  const mUnpaid=monthWorks.filter(w=>!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+
   document.getElementById('balArea').innerHTML=`
     <div class="bal-card">
-      <div class="bc-lbl">전체 미수금</div>
-      <div class="bc-amt">${fmtW(totalOutstanding)}</div>
       <div class="bc-row">
-        <div class="bc-item"><div class="bi-l">총 예상금액</div><div class="bi-v">${fmtW(totalExp)}</div></div>
-        <div class="bc-item"><div class="bi-l">수령 완료</div><div class="bi-v">${fmtW(totalRcv)}</div></div>
+        <div class="bc-item"><div class="bi-l">이달 총 일당</div><div class="bi-v">${fmtW(mWage)}</div></div>
+        <div class="bc-item"><div class="bi-l">이달 미수금</div><div class="bi-v" style="color:${mUnpaid>0?'var(--red)':'var(--muted)'}">${fmtW(mUnpaid)}</div></div>
       </div>
     </div>`;
 
-  document.getElementById('hideCompWrap').innerHTML=`<button onclick="toggleHideComp()" style="background:${hideComp?'var(--pri)':'none'};color:${hideComp?'#fff':'var(--muted)'};border:1.5px solid ${hideComp?'var(--pri)':'var(--border)'};border-radius:20px;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer;">완료 숨기기</button>`;
+  document.getElementById('payFilterWrap').innerHTML=`<div style="display:flex;gap:6px">${[['all','전체'],['unpaid','미수금'],['done','완료']].map(([v,l])=>`<button onclick="setPayFilter('${v}')" style="background:${payFilter===v?'var(--pri)':'none'};color:${payFilter===v?'#fff':'var(--muted)'};border:1.5px solid ${payFilter===v?'var(--pri)':'var(--border)'};border-radius:20px;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer">${l}</button>`).join('')}</div>`;
 
   const el=document.getElementById('pList');
-  if(payableWorks.length===0){el.innerHTML='<div class="es"><div class="es-icon">🧾</div><div class="es-title">정산할 현장이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>여기서 입금 현황을 관리할 수 있어요</div></div>';return;}
+  if(monthWorks.length===0){
+    el.innerHTML='<div class="es"><div class="es-icon">🧾</div><div class="es-title">이달 현장이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>여기서 정산을 관리할 수 있어요</div></div>';
+    return;
+  }
 
-  const sorted=[...payableWorks].filter(w=>!hideComp||!w.isPaid).sort((a,b)=>a.isPaid===b.isPaid?0:a.isPaid?1:-1);
-  el.innerHTML=sorted.map(w=>{
+  const filtered=monthWorks
+    .filter(w=>payFilter==='all'?true:payFilter==='done'?w.isPaid:!w.isPaid)
+    .sort((a,b)=>a.isPaid===b.isPaid?0:a.isPaid?1:-1);
+
+  if(filtered.length===0){
+    el.innerHTML=`<div class="es" style="padding:32px 24px"><div class="es-title" style="font-size:15px">${payFilter==='done'?'완료된 현장이 없어요':'미수금이 없어요 🎉'}</div></div>`;
+    return;
+  }
+
+  el.innerHTML=filtered.map(w=>{
     const exp=expAmt(w), rcv=rcvAmt(w.id), diff=rcv-exp;
     const c=getColor(w.color||'orange');
     const badge=w.isPaid
