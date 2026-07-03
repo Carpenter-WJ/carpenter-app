@@ -506,6 +506,7 @@
     </div>
     <div class="cal-grid" id="calGrid"></div>
   </div>
+  <div id="calHint" style="display:none;text-align:center;padding:28px 24px 8px;color:var(--muted);font-size:14px;line-height:1.8">+ 버튼을 눌러 첫 현장을 추가하면<br>달력에서 한눈에 볼 수 있어요</div>
 </div>
 
 <!-- 기록 탭 -->
@@ -2144,6 +2145,8 @@ function renderCal() {
   }
 
   document.getElementById('calGrid').innerHTML=html;
+  const calHint=document.getElementById('calHint');
+  if(calHint) calHint.style.display=DB.works.length===0?'':'none';
 }
 
 // ── 날짜 모달 ──
@@ -2755,7 +2758,8 @@ function renderWork() {
   const el=document.getElementById('wList');
   if(filtered.length===0){
     const isAll = DB.works.length===0;
-    el.innerHTML=`<div class="es"><div class="es-icon">📋</div><div class="es-title">${isAll?'아직 작업 기록이 없어요':monthLbl+' 작업 기록이 없어요'}</div><div class="es-desc">${isAll?'아래 + 버튼을 눌러<br>첫 현장을 추가해보세요':'이 달엔 작업 기록이 없어요<br>다른 달을 선택하거나 추가해보세요'}</div></div>`;
+    const ctaBtn = isAll ? `<button onclick="openWorkOv(null,todayStr())" style="margin-top:20px;padding:12px 28px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">첫 현장 추가하기</button>` : '';
+    el.innerHTML=`<div class="es"><div class="es-icon">${isAll?'🏗️':'📋'}</div><div class="es-title">${isAll?'아직 작업 기록이 없어요':monthLbl+' 작업 기록이 없어요'}</div><div class="es-desc">${isAll?'현장명, 날짜, 일당을<br>기록해보세요':'이 달엔 작업 기록이 없어요'}</div>${ctaBtn}</div>`;
     return;
   }
   // 같은 현장(jobId)에 묶인 여러 명의 근무기록을 한 카드로 그룹핑 (팀 모드에서 의미 있음)
