@@ -416,6 +416,17 @@ function memberName(uid) {
   return m ? (m.displayName || '이름 없음') : '팀원';
 }
 
+// 기록/정산/통계 탭 공통 뱃지 — 팀 모드에서만 표시
+function workTypeBadge(w) {
+  if (dataMode !== 'team') return '';
+  const base = 'font-size:10px;font-weight:700;border-radius:4px;padding:1px 7px;margin-left:6px;vertical-align:middle;display:inline-block';
+  if (w.isPersonal) {
+    return `<span style="${base};background:rgba(52,199,89,.15);color:#34C759">개인</span>`;
+  }
+  const name = memberName(w.ownerUid || w.createdBy);
+  return `<span style="${base};background:#e8f0fe;color:#3b5bdb">팀</span><span style="font-size:10px;font-weight:600;color:var(--muted);margin-left:4px;vertical-align:middle">${name}</span>`;
+}
+
 async function loadData() {
   try {
     const userRef = fsdb.collection('users').doc(currentUser.uid);
@@ -1998,9 +2009,9 @@ function renderWorkRow(w,y,m,standalone) {
   const calc=wageVisible?(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})():'';
   const c=getColor(w.color||'orange');
   const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="delWork('${w.id}')">🗑</button>`:'';
-  const teamBadge=!w.isPersonal&&w.teamName?`<span style="font-size:10px;background:var(--chip-bg);color:var(--pri);border-radius:6px;padding:1px 6px;margin-left:6px;font-weight:600">${w.teamName}</span>`:'';
-  const personalBadge=w.isPersonal&&dataMode==='team'?`<span style="font-size:10px;background:rgba(52,199,89,.15);color:#34C759;border-radius:6px;padding:1px 6px;margin-left:6px;font-weight:600">개인</span>`:'';
-  const titleHtml=standalone?`<div class="wi-site">${w.site}${teamBadge}${personalBadge}</div>`:(dataMode==='team'?`<div class="wi-who">${memberName(w.ownerUid||w.createdBy)}</div>`:'');
+  const titleHtml=standalone
+    ?`<div class="wi-site">${w.site}${workTypeBadge(w)}</div>`
+    :(dataMode==='team'?`<div class="wi-who">${workTypeBadge(w)}</div>`:'');
   return `
     <div class="witem"${standalone?` style="border-left:4px solid ${c.border}"`:''}>
       <div class="wi-main">
@@ -2061,14 +2072,11 @@ function renderPay() {
       ?'<span class="wi-badge badge-paid" style="font-size:11px">정산완료</span>'
       :(rcv>0?'<span class="wi-badge badge-partial" style="font-size:11px">부분정산</span>':'<span class="wi-badge badge-unpaid" style="font-size:11px">미정산</span>');
     const diffHtml=diff===0?'':`<div class="pi-diff ${diff<0?'minus':'plus'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))} ${diff<0?'덜 받음':'더 받음'}</div>`;
-    const memberBadge=dataMode==='team'
-      ?`<span style="font-size:11px;font-weight:600;color:var(--pri);margin-left:7px;background:var(--chip-bg,#fff3e0);border-radius:4px;padding:1px 7px">${memberName(w.ownerUid||w.createdBy)}</span>`
-      :'';
     return `
       <div class="pitem" onclick="openPayDetail('${w.id}')" style="border-left:4px solid ${c.border}">
         <div class="pi-top">
           <div>
-            <div class="pi-site">${w.site}${memberBadge}</div>
+            <div class="pi-site">${w.site}${workTypeBadge(w)}</div>
             <div class="pi-meta">${formatDatesShort(w.dates)}</div>
           </div>
           <div class="pi-right">
@@ -2577,7 +2585,7 @@ function renderStat() {
     return `
       <div class="witem">
         <div class="wi-main">
-          <div class="wi-site">${w.site}</div>
+          <div class="wi-site">${w.site}${workTypeBadge(w)}</div>
           <div class="wi-dates">${formatDatesShort(mDates)}</div>
           <div class="wi-wage">일당 ${fmtW(w.wage)}${u!==1?` · ${u}품`:''}</div>
         </div>
