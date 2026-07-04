@@ -2351,7 +2351,175 @@ function exportCSV() {
 }
 
 function printReport() {
-  window.print();
+  const now = new Date();
+  const userName = userDisplayName || currentUser?.displayName || '';
+  const monthLabel = `${statY}년 ${statM + 1}월`;
+  const todayLabel = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+
+  const statBase = (dataMode === 'team' && teamRole !== 'leader')
+    ? DB.works.filter(w => w.wage != null)
+    : DB.works;
+  const works = statBase.filter(w => (w.dates||[]).some(d => {
+    const p = parsD(d); return p.y === statY && p.m === statM;
+  }));
+
+  let mWage = 0, sUnit = 0;
+  works.forEach(w => {
+    const cnt = (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; }).length;
+    const u = Number(w.unit||1);
+    mWage += cnt * Number(w.wage) * u;
+    sUnit += cnt * u;
+  });
+  const workDays = new Set(works.flatMap(w =>
+    (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; })
+  )).size;
+  const mPaid = DB.payments
+    .filter(p => { const d = parsD(p.date); return d.y === statY && d.m === statM; })
+    .reduce((s, p) => s + Number(p.amount), 0);
+  const mOutstanding = works.reduce((s, w) =>
+    w.wage == null || w.isPaid ? s : s + Math.max(0, expAmt(w) - rcvAmt(w.id)), 0);
+  const sUnitStr = sUnit % 1 === 0 ? sUnit : sUnit.toFixed(1);
+
+  const worksRows = works.map(w => {
+    const mDates = (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; });
+    const u = Number(w.unit||1);
+    const total = mDates.length * Number(w.wage) * u;
+    const outstanding = Math.max(0, expAmt(w) - rcvAmt(w.id));
+    const statusLabel = w.isPaid ? '정산완료' : outstanding > 0 ? `미수 ${fmtW(outstanding)}` : '정산대기';
+    const statusClass = w.isPaid ? 's-paid' : outstanding > 0 ? 's-unpaid' : 's-pending';
+    return `<tr>
+      <td class="td-site">${w.site}</td>
+      <td class="td-sub">${formatDatesShort(mDates)}</td>
+      <td class="td-num">${fmtW(w.wage)}</td>
+      <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+      <td class="td-num td-bold">${fmtW(total)}</td>
+      <td class="td-center"><span class="badge ${statusClass}">${statusLabel}</span></td>
+    </tr>`;
+  }).join('');
+
+  const payments = DB.payments
+    .filter(p => { const d = parsD(p.date); return d.y === statY && d.m === statM; })
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const payRows = payments.map(p => {
+    const w = DB.works.find(x => x.id === p.workId);
+    return `<tr>
+      <td class="td-sub">${p.date.slice(5).replace('-','/')}</td>
+      <td class="td-site">${w ? w.site : '—'}</td>
+      <td class="td-num td-bold">${fmtW(p.amount)}</td>
+      <td class="td-sub">${p.note || ''}</td>
+    </tr>`;
+  }).join('');
+
+  const teamLabel = (dataMode === 'team' && teamInfo) ? `${teamInfo.name} · ` : '';
+  const roleSuffix = (dataMode === 'team' && teamRole !== 'leader') ? ' (내 기록 기준)' : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>${monthLabel} 작업보고서</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Pretendard',system-ui,-apple-system,sans-serif;color:#1a1a1a;background:#fff;padding:52px 60px;font-size:13px;line-height:1.6;}
+  .doc-header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:20px;border-bottom:2px solid #1a1a1a;margin-bottom:36px;}
+  .doc-brand{font-size:12px;font-weight:700;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:6px;}
+  .doc-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
+  .doc-sub{font-size:13px;color:#666;margin-top:4px;}
+  .doc-meta{text-align:right;font-size:12px;color:#666;line-height:2;}
+  .doc-meta strong{color:#1a1a1a;font-size:15px;font-weight:700;display:block;margin-bottom:2px;}
+  .section{margin-bottom:36px;}
+  .section-title{font-size:10px;font-weight:700;letter-spacing:1.5px;color:#aaa;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #f0f0f0;}
+  .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .scard{background:#f8f8f8;border-radius:10px;padding:16px 18px;}
+  .scard.dark{background:#1a1a1a;color:#fff;}
+  .scard.green{background:#f0faf1;border:1px solid #c8e6c9;}
+  .scard.red{background:#fff8f0;border:1px solid #ffcc80;}
+  .sc-label{font-size:11px;color:#999;margin-bottom:6px;}
+  .scard.dark .sc-label{color:#888;}
+  .scard.green .sc-label,.scard.red .sc-label{color:#777;}
+  .sc-value{font-size:20px;font-weight:700;letter-spacing:-0.5px;}
+  .sc-value.lg{font-size:22px;}
+  table{width:100%;border-collapse:collapse;}
+  th{font-size:11px;font-weight:600;color:#aaa;text-align:left;padding:8px 12px;background:#fafafa;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;}
+  td{padding:11px 12px;border-bottom:1px solid #f5f5f5;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .td-site{font-weight:600;}
+  .td-sub{color:#888;font-size:12px;}
+  .td-num{text-align:right;font-variant-numeric:tabular-nums;}
+  .td-bold{font-weight:700;}
+  .td-center{text-align:center;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+  .s-paid{background:#e8f5e9;color:#2e7d32;}
+  .s-unpaid{background:#fff3e0;color:#e65100;}
+  .s-pending{background:#f5f5f5;color:#888;}
+  .doc-footer{margin-top:52px;padding-top:16px;border-top:1px solid #ebebeb;font-size:11px;color:#ccc;text-align:center;letter-spacing:0.5px;}
+  @media print{
+    body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{margin:15mm 18mm;size:A4;}
+  }
+</style>
+</head>
+<body>
+
+<div class="doc-header">
+  <div>
+    <div class="doc-brand">목수일지</div>
+    <div class="doc-title">${monthLabel} 작업보고서</div>
+    <div class="doc-sub">${teamLabel}${monthLabel}${roleSuffix}</div>
+  </div>
+  <div class="doc-meta">
+    <strong>${userName}</strong>
+    작성일 ${todayLabel}
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">이달 요약</div>
+  <div class="summary-grid">
+    <div class="scard"><div class="sc-label">작업일수</div><div class="sc-value">${workDays}일</div></div>
+    <div class="scard"><div class="sc-label">품수</div><div class="sc-value">${sUnitStr}품</div></div>
+    <div class="scard"><div class="sc-label">현장 수</div><div class="sc-value">${works.length}곳</div></div>
+    <div class="scard dark"><div class="sc-label">총 임금</div><div class="sc-value lg">${fmtW(mWage)}</div></div>
+    <div class="scard green"><div class="sc-label">수령액</div><div class="sc-value lg">${fmtW(mPaid)}</div></div>
+    <div class="scard ${mOutstanding > 0 ? 'red' : 'green'}"><div class="sc-label">미수금</div><div class="sc-value lg">${mOutstanding > 0 ? fmtW(mOutstanding) : '없음'}</div></div>
+  </div>
+</div>
+
+${works.length > 0 ? `
+<div class="section">
+  <div class="section-title">현장별 작업 내역</div>
+  <table>
+    <thead><tr>
+      <th>현장명</th><th>작업 기간</th>
+      <th style="text-align:right">일당</th><th style="text-align:right">품수</th>
+      <th style="text-align:right">총금액</th><th style="text-align:center">정산</th>
+    </tr></thead>
+    <tbody>${worksRows}</tbody>
+  </table>
+</div>` : ''}
+
+${payments.length > 0 ? `
+<div class="section">
+  <div class="section-title">입금 내역</div>
+  <table>
+    <thead><tr>
+      <th>날짜</th><th>현장</th><th style="text-align:right">금액</th><th>비고</th>
+    </tr></thead>
+    <tbody>${payRows}</tbody>
+  </table>
+</div>` : ''}
+
+<div class="doc-footer">목수일지 · carpenter-wj.github.io/carpenter-app</div>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank', 'width=860,height=720');
+  if (!w) { alert('팝업이 차단되어 있어요. 브라우저에서 팝업 허용 후 다시 시도해 주세요.'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 600);
 }
 
 function renderStat() {
