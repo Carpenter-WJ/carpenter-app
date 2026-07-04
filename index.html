@@ -1087,6 +1087,10 @@ const VAR_HOL = {
   '2027-02-06':'설연휴','2027-02-07':'설날','2027-02-08':'설연휴',
   '2027-05-13':'부처님오신날',
   '2027-09-14':'추석연휴','2027-09-15':'추석','2027-09-16':'추석연휴',
+  '2028-01-26':'설연휴','2028-01-27':'설날','2028-01-28':'설연휴',
+  '2028-05-02':'부처님오신날',
+  '2028-10-02':'추석연휴','2028-10-03':'추석','2028-10-04':'추석연휴',
+  '2028-10-05':'대체공휴일',
 };
 function getHoli(ds) { return VAR_HOL[ds] || FIXED_HOL[ds.slice(5)] || null; }
 
@@ -1114,6 +1118,7 @@ let teamMemberExits = []; // {uid, exitedAt, works, payments, docId}
 let pendingTeamId = null;  // 가입 신청 대기 중인 팀 ID
 let pendingTeamName = '';  // 대기 중인 팀 이름
 let joinRequests = [];     // 팀장용 — 대기 중인 가입 신청 목록
+let _pendingListener = null;
 const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
@@ -1506,6 +1511,7 @@ async function loadData() {
             dataMode = 'pending';
             activeTeamId = null; DB.jobs = []; DB.notifications = [];
             await loadPersonalData(userRef);
+            startPendingListener(pTeamId);
           }
         } catch(e) {
           console.warn('가입 신청 상태 확인 오류:', e.message);
@@ -1830,6 +1836,45 @@ async function rejectJoinRequest(uid) {
   } catch(e) { console.error(e); alert('거절에 실패했습니다.\n' + e.message); }
 }
 
+function startPendingListener(teamId) {
+  if (_pendingListener) { _pendingListener(); _pendingListener = null; }
+  if (!currentUser || !teamId) return;
+  _pendingListener = fsdb.collection('teams').doc(teamId)
+    .collection('joinRequests').doc(currentUser.uid)
+    .onSnapshot(async (doc) => {
+      if (!doc.exists) return;
+      const status = doc.data().status;
+      if (status === 'approved') {
+        stopPendingListener();
+        const userRef = fsdb.collection('users').doc(currentUser.uid);
+        await userRef.update({ teamId, pendingTeamId: firebase.firestore.FieldValue.delete() });
+        activeTeamId = teamId; dataMode = 'team';
+        const teamDoc = await fsdb.collection('teams').doc(teamId).get();
+        teamInfo = teamDoc.exists ? teamDoc.data() : null;
+        const memberDoc = await fsdb.collection('teams').doc(teamId).collection('members').doc(currentUser.uid).get();
+        teamRole = memberDoc.exists ? memberDoc.data().role : 'member';
+        await loadTeamData();
+        localStorage.setItem('moksujilji2', JSON.stringify(DB));
+        updateHeader();
+        renderTeamSettings();
+        showTeamWelcome();
+      } else if (status === 'rejected') {
+        stopPendingListener();
+        const userRef = fsdb.collection('users').doc(currentUser.uid);
+        await userRef.update({ pendingTeamId: firebase.firestore.FieldValue.delete() });
+        pendingTeamId = null; pendingTeamName = '';
+        dataMode = 'personal'; activeTeamId = null; DB.jobs = []; DB.notifications = [];
+        await loadPersonalData(fsdb.collection('users').doc(currentUser.uid));
+        renderTeamSettings();
+        showToast('팀 가입 신청이 거절되었습니다.');
+      }
+    }, (e) => console.error('가입 신청 감지 오류:', e));
+}
+
+function stopPendingListener() {
+  if (_pendingListener) { _pendingListener(); _pendingListener = null; }
+}
+
 async function cancelJoinRequest() {
   if (!confirm('팀 가입 신청을 취소할까요?')) return;
   try {
@@ -1841,6 +1886,7 @@ async function cancelJoinRequest() {
         await fsdb.collection('teams').doc(pTeamId).collection('joinRequests').doc(currentUser.uid).delete();
       } catch(e) { console.warn('신청서 삭제 실패:', e.message); }
     }
+    stopPendingListener();
     await userRef.update({ pendingTeamId: firebase.firestore.FieldValue.delete() });
     pendingTeamId = null; pendingTeamName = '';
     dataMode = 'personal';
@@ -2662,9 +2708,13 @@ async function saveWorkMulti(site,address,contact,phone,memo) {
     const unit=Number(row.querySelector('.mw-unit').value)||1;
     const name=row.querySelector('.mw-name').textContent;
     if(!wage){alert(`${name}의 일당을 입력해주세요.`);return;}
-    members.push({uid:check.value,wage,unit});
+    members.push({uid:check.value,wage,unit,name:name.trim()});
   }
   if(members.length===0){alert('한 명 이상 선택해주세요.');return;}
+
+  const dayCount=editDates.length;
+  const summaryLines=members.map(m=>`• ${m.name} · ${dayCount}일 · ${fmtW(m.wage*dayCount*m.unit)}`).join('\n');
+  if(!confirm(`[${site}]\n\n${summaryLines}\n\n총 ${members.length}명을 등록할까요?`))return;
 
   const {vis:jobVis,sharedWith:jobSharedWith}=getSelectedVisibility();
 
@@ -3465,6 +3515,7 @@ auth.onAuthStateChanged(user => {
     initPTR();
   } else {
     currentUser = null;
+    stopPendingListener();
     DB = { works: [], payments: [], jobs: [] };
     dataMode = 'personal'; activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     loginScreen.style.display = 'flex';
