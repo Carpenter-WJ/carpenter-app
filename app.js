@@ -2061,11 +2061,14 @@ function renderPay() {
       ?'<span class="wi-badge badge-paid" style="font-size:11px">정산완료</span>'
       :(rcv>0?'<span class="wi-badge badge-partial" style="font-size:11px">부분정산</span>':'<span class="wi-badge badge-unpaid" style="font-size:11px">미정산</span>');
     const diffHtml=diff===0?'':`<div class="pi-diff ${diff<0?'minus':'plus'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))} ${diff<0?'덜 받음':'더 받음'}</div>`;
+    const memberBadge=dataMode==='team'
+      ?`<span style="font-size:11px;font-weight:600;color:var(--pri);margin-left:7px;background:var(--chip-bg,#fff3e0);border-radius:4px;padding:1px 7px">${memberName(w.ownerUid||w.createdBy)}</span>`
+      :'';
     return `
       <div class="pitem" onclick="openPayDetail('${w.id}')" style="border-left:4px solid ${c.border}">
         <div class="pi-top">
           <div>
-            <div class="pi-site">${w.site}</div>
+            <div class="pi-site">${w.site}${memberBadge}</div>
             <div class="pi-meta">${formatDatesShort(w.dates)}</div>
           </div>
           <div class="pi-right">
