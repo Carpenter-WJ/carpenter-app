@@ -251,7 +251,13 @@
     .sh-sub { font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
 
     /* 폼 */
-    .fg { margin-bottom:14px; }
+    .fg { margin-bottom:14px; position:relative; }
+    .site-dropdown { display:none; position:absolute; top:calc(100% - 6px); left:0; right:0; background:var(--card); border:1.5px solid var(--pri); border-top:none; border-radius:0 0 11px 11px; box-shadow:0 6px 20px rgba(0,0,0,.13); z-index:200; max-height:220px; overflow-y:auto; }
+    .sdi { padding:11px 14px; cursor:pointer; border-bottom:1px solid var(--border); }
+    .sdi:last-child { border-bottom:none; }
+    .sdi:active { background:var(--bg-sub); }
+    .sdi-name { font-size:14px; font-weight:600; color:var(--text); }
+    .sdi-meta { font-size:11px; color:var(--muted); margin-top:2px; }
     .fg label { display:block; font-size:13px; font-weight:600; color:var(--muted); margin-bottom:6px; }
     .fg input, .fg textarea {
       width:100%; padding:13px 14px; border:1.5px solid var(--border);
@@ -737,8 +743,8 @@
     </div>
     <div class="fg">
       <label>현장명</label>
-      <input type="text" id="inSite" placeholder="예) 강남 아파트 현장" list="siteSuggestions" autocomplete="off">
-      <datalist id="siteSuggestions"></datalist>
+      <input type="text" id="inSite" placeholder="예) 강남 아파트 현장" autocomplete="off" oninput="onSiteInput()">
+      <div id="siteDropdown" class="site-dropdown"></div>
     </div>
     <div class="fg" id="wageFg">
       <label>일당 (원)</label>
@@ -1139,6 +1145,50 @@ function toggleInfoSection(force) {
   body.classList.toggle('open',open);
   arrow.classList.toggle('open',open);
 }
+
+// ── 현장 자동완성 ──
+function getSiteHistory() {
+  if (dataMode === 'team') {
+    return DB.jobs.map(j => ({ site:j.site, address:j.address||'', contact:j.contact||'', phone:j.phone||'', memo:j.memo||'', color:j.color||'orange' }));
+  }
+  const seen = new Set();
+  return DB.works
+    .slice().sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''))
+    .filter(w=>{ if(seen.has(w.site)) return false; seen.add(w.site); return true; })
+    .map(w=>({ site:w.site, address:w.address||'', contact:w.contact||'', phone:w.phone||'', memo:w.memo||'', color:w.color||'orange' }));
+}
+
+let _siteHistory = [];
+function onSiteInput() {
+  const val = document.getElementById('inSite').value.trim();
+  const dd = document.getElementById('siteDropdown');
+  if (!val) { dd.style.display = 'none'; return; }
+  _siteHistory = getSiteHistory().filter(s => s.site !== val && s.site.toLowerCase().includes(val.toLowerCase()));
+  if (_siteHistory.length === 0) { dd.style.display = 'none'; return; }
+  dd.innerHTML = _siteHistory.map((s, i) => `
+    <div class="sdi" onclick="selectSiteHistory(${i})">
+      <div class="sdi-name">${s.site}</div>
+      ${s.address ? `<div class="sdi-meta">📍 ${s.address}</div>` : ''}
+    </div>`).join('');
+  dd.style.display = '';
+}
+
+function selectSiteHistory(idx) {
+  const s = _siteHistory[idx]; if (!s) return;
+  document.getElementById('inSite').value = s.site;
+  document.getElementById('inAddress').value = s.address;
+  document.getElementById('inContact').value = s.contact;
+  document.getElementById('inPhone').value = s.phone;
+  document.getElementById('inMemo').value = s.memo;
+  if (s.color) { editColor = s.color; renderColorChips(); }
+  document.getElementById('siteDropdown').style.display = 'none';
+  if (s.address || s.contact || s.phone || s.memo) toggleInfoSection(true);
+}
+
+document.addEventListener('click', e => {
+  const dd = document.getElementById('siteDropdown');
+  if (dd && !dd.contains(e.target) && e.target.id !== 'inSite') dd.style.display = 'none';
+});
 
 // ── 테마 ──
 function applyTheme() {
@@ -2386,8 +2436,7 @@ function openWorkOv(workId, prefillDate) {
   }
   document.getElementById('wageFg').style.display=wageEditable?'':'none';
   document.getElementById('wageHiddenNote').style.display=wageEditable?'none':'';
-  const siteSource=(dataMode==='team'?DB.jobs:DB.works).map(x=>x.site);
-  document.getElementById('siteSuggestions').innerHTML=[...new Set(siteSource)].map(s=>`<option value="${s}">`).join('');
+  document.getElementById('siteDropdown').style.display='none';
   // 팀장 전용 UI
   const ownerFg=document.getElementById('ownerFg');
   const memberWagesFg=document.getElementById('memberWagesFg');
