@@ -1,4 +1,4 @@
-const CACHE = 'moksujilji-v8';
+const CACHE = 'moksujilji-v9';
 const FILES = ['./manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
