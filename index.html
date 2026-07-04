@@ -746,6 +746,10 @@
       <input type="text" id="inSite" placeholder="예) 강남 아파트 현장" autocomplete="off" oninput="onSiteInput()">
       <div id="siteDropdown" class="site-dropdown"></div>
     </div>
+    <div class="fg">
+      <label>작업 내용 <span style="font-weight:400;font-size:11px;color:var(--muted)">(선택)</span></label>
+      <input type="text" id="inWorkDesc" placeholder="예) 목공 마감, 창호 설치">
+    </div>
     <div class="fg" id="wageFg">
       <label>일당 (원)</label>
       <input type="number" id="inWage" placeholder="0" inputmode="numeric">
@@ -793,8 +797,8 @@
           <input type="tel" id="inPhone" placeholder="010-0000-0000" inputmode="tel">
         </div>
         <div class="fg">
-          <label>메모</label>
-          <input type="text" id="inMemo" placeholder="기타 메모사항">
+          <label>현장 메모</label>
+          <input type="text" id="inMemo" placeholder="현관 비번, 주차 방법 등">
         </div>
         <!-- 팀장 모드: 공개 범위 설정 -->
         <div class="fg" id="visibilityFg" style="display:none">
@@ -1149,13 +1153,13 @@ function toggleInfoSection(force) {
 // ── 현장 자동완성 ──
 function getSiteHistory() {
   if (dataMode === 'team') {
-    return DB.jobs.map(j => ({ site:j.site, address:j.address||'', contact:j.contact||'', phone:j.phone||'', memo:j.memo||'', color:j.color||'orange' }));
+    return DB.jobs.map(j => ({ site:j.site, address:j.address||'', contact:j.contact||'', phone:j.phone||'', memo:j.memo||'', color:j.color||'orange', workDesc:'' }));
   }
   const seen = new Set();
   return DB.works
     .slice().sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''))
     .filter(w=>{ if(seen.has(w.site)) return false; seen.add(w.site); return true; })
-    .map(w=>({ site:w.site, address:w.address||'', contact:w.contact||'', phone:w.phone||'', memo:w.memo||'', color:w.color||'orange' }));
+    .map(w=>({ site:w.site, workDesc:w.workDesc||'', address:w.address||'', contact:w.contact||'', phone:w.phone||'', memo:w.memo||'', color:w.color||'orange' }));
 }
 
 let _siteHistory = [];
@@ -1176,6 +1180,7 @@ function onSiteInput() {
 function selectSiteHistory(idx) {
   const s = _siteHistory[idx]; if (!s) return;
   document.getElementById('inSite').value = s.site;
+  document.getElementById('inWorkDesc').value = s.workDesc;
   document.getElementById('inAddress').value = s.address;
   document.getElementById('inContact').value = s.contact;
   document.getElementById('inPhone').value = s.phone;
@@ -1351,6 +1356,7 @@ async function saveOneWork(w) {
     if (!canSeeWage(w)) return; // wage 수정 권한 없을 때 skip (job 정보는 saveJobInfo가 처리)
     await teamRef().collection('wages').doc(w.id).set({
       jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, isPaid: w.isPaid,
+      workDesc: w.workDesc || '',
       ownerUid: w.ownerUid || w.createdBy,
       createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -2416,6 +2422,7 @@ function openWorkOv(workId, prefillDate) {
       document.getElementById('inWage').value=wageEditable?w.wage:'';
       document.getElementById('inUnit').value=String(w.unit||1);
       editDates=[...w.dates]; editColor=w.color||'orange';
+      document.getElementById('inWorkDesc').value=w.workDesc||'';
       document.getElementById('inAddress').value=w.address||'';
       document.getElementById('inContact').value=w.contact||'';
       document.getElementById('inPhone').value=w.phone||'';
@@ -2424,6 +2431,7 @@ function openWorkOv(workId, prefillDate) {
     }
   } else {
     document.getElementById('inSite').value='';
+    document.getElementById('inWorkDesc').value='';
     document.getElementById('inWage').value=defaultWage||'';
     document.getElementById('inUnit').value='1';
     document.getElementById('inAddress').value='';
@@ -2746,7 +2754,7 @@ function confirmDatePick() {
   closeOv('datePickOv');
 }
 
-async function saveWorkMulti(site,address,contact,phone,memo) {
+async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
   // 선택된 팀원 + 각자 일당/품수 수집
   const rows=[...document.querySelectorAll('#memberWageList .mw-row')];
   const members=[];
@@ -2791,12 +2799,12 @@ async function saveWorkMulti(site,address,contact,phone,memo) {
     const wId=(now+i).toString(36);
     const sortedDates=editDates.sort();
     batch.set(t.collection('wages').doc(wId),{
-      jobId,dates:sortedDates,unit:m.unit,wage:m.wage,isPaid:false,
+      jobId,dates:sortedDates,unit:m.unit,wage:m.wage,isPaid:false,workDesc,
       ownerUid:m.uid,createdBy:currentUser.uid,
       createdAt:firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt:firebase.firestore.FieldValue.serverTimestamp()
     });
-    newWorks.push({id:wId,site,wage:m.wage,unit:m.unit,dates:sortedDates,isPaid:false,
+    newWorks.push({id:wId,site,workDesc,wage:m.wage,unit:m.unit,dates:sortedDates,isPaid:false,
       color:editColor,address,contact,phone,memo,
       createdBy:currentUser.uid,ownerUid:m.uid,jobId});
     if(m.uid!==currentUser.uid) createNotification(m.uid,'wage_created',wId,site);
@@ -2816,6 +2824,7 @@ async function saveWork() {
   const site=document.getElementById('inSite').value.trim();
   const unit=Number(document.getElementById('inUnit').value);
   const workId=document.getElementById('editWorkId').value;
+  const workDesc=document.getElementById('inWorkDesc').value.trim();
   const address=document.getElementById('inAddress').value.trim();
   const contact=document.getElementById('inContact').value.trim();
   const phone=document.getElementById('inPhone').value.trim();
@@ -2834,12 +2843,12 @@ async function saveWork() {
     let savedW;
     if(existing){
       existing.site=site;existing.unit=unit;existing.dates=[...editDates].sort();
-      existing.color=editColor;existing.address=address;existing.contact=contact;
+      existing.color=editColor;existing.workDesc=workDesc;existing.address=address;existing.contact=contact;
       existing.phone=phone;existing.memo=memo;existing.wage=wage;
       savedW=existing;
     } else {
       const wId=Date.now().toString(36);
-      savedW={id:wId,site,address,contact,phone,memo,wage,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
+      savedW={id:wId,site,workDesc,address,contact,phone,memo,wage,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
       DB.works.push(savedW);
     }
     DB.works.sort((a,b)=>(b.dates[b.dates.length-1]||'').localeCompare(a.dates[a.dates.length-1]||''));
@@ -2856,7 +2865,7 @@ async function saveWork() {
 
   // 팀장 신규 다중 등록 모드
   if(isLeaderMode&&!existing){
-    await saveWorkMulti(site,address,contact,phone,memo);
+    await saveWorkMulti(site,workDesc,address,contact,phone,memo);
     return;
   }
 
@@ -2879,7 +2888,7 @@ async function saveWork() {
   let _savedWork = existing; // 핀포인트 저장 대상 추적
   if(existing){
     existing.site=site;existing.unit=unit;existing.dates=editDates.sort();existing.color=editColor;
-    existing.address=address;existing.contact=contact;existing.phone=phone;existing.memo=memo;
+    existing.workDesc=workDesc;existing.address=address;existing.contact=contact;existing.phone=phone;existing.memo=memo;
     if(wageEditable) existing.wage=wage;
     if(dataMode==='team'){
       saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
@@ -2911,7 +2920,7 @@ async function saveWork() {
       }
     }
     const wId=Date.now().toString(36);
-    const w={id:wId,site,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
+    const w={id:wId,site,workDesc,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
     if(dataMode==='team'){ w.createdBy=currentUser.uid; w.ownerUid=ownerUid; w.jobId=jobId; }
     DB.works.push(w);
     _savedWork = w;
@@ -3050,6 +3059,7 @@ function renderWorkRow(w,y,m,standalone) {
       <div class="wi-main">
         ${titleHtml}
         <div class="wi-dates">${formatDatesShort(mDates)}</div>
+        ${w.workDesc?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${w.workDesc}</div>`:''}
         <div class="wi-wage">${wageVisible?`일당 ${fmtW(w.wage)}${u!==1?` · ${u}품`:''}`:'일당 비공개'}</div>
         ${badge}
       </div>
@@ -3140,6 +3150,7 @@ function openPayDetail(wId) {
   document.getElementById('pdShareBtn').style.display=outstanding>0&&!w.isPaid?'block':'none';
   document.getElementById('pdSite').textContent=w.site;
   const infoLines=[
+    w.workDesc&&`<div style="font-size:12px;color:var(--text2);margin-top:4px;font-weight:600">🔨 ${w.workDesc}</div>`,
     w.address&&`<div style="font-size:12px;color:var(--muted);margin-top:4px">📍 ${w.address}</div>`,
     (w.contact||w.phone)&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">👤 ${[w.contact,w.phone].filter(Boolean).join(' · ')}</div>`,
     w.memo&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">📝 ${w.memo}</div>`,
@@ -3371,7 +3382,7 @@ function renderIncomeChart() {
 function exportCSV() {
   if(dataMode==='team'&&teamRole!=='leader'){alert('팀원 모드에서는 전체 데이터 내보내기가 제한돼요.');return;}
   const short = s => s ? s.slice(5).replace('-', '/') : ''; // 'YYYY-MM-DD' → 'MM/DD'
-  const rows=[['구분','팀원명','현장명','작업기간','작업일수','일당','품수','총금액','정산상태','수령액','미수금']];
+  const rows=[['구분','팀원명','현장명','작업 내용','작업기간','작업일수','일당','품수','총금액','정산상태','수령액','미수금']];
   DB.works.filter(w=>w.wage!=null).forEach(w=>{
     const dates=(w.dates||[]).slice().sort();
     const period = dates.length===0 ? '' : dates.length===1
@@ -3382,7 +3393,7 @@ function exportCSV() {
     const status=w.isPaid?'정산완료':(rcv>0?'부분정산':'미정산');
     const ownerName = dataMode==='team' ? (memberName(w.ownerUid||w.createdBy)||'') : '';
     const section = w.isPersonal ? '개인(날일)' : (dataMode==='team' ? '팀' : '개인');
-    rows.push([section, ownerName, w.site, period, dates.length, w.wage, w.unit||1, exp, status, rcv, unpaid]);
+    rows.push([section, ownerName, w.site, w.workDesc||'', period, dates.length, w.wage, w.unit||1, exp, status, rcv, unpaid]);
   });
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
