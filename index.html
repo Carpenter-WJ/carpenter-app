@@ -250,6 +250,12 @@
     .sh-title { font-size:18px; font-weight:700; margin-bottom:6px; }
     .sh-sub { font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
 
+    /* 일일 메모 */
+    .day-memo-area { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+    .day-memo-area textarea { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:inherit; color:var(--text); background:var(--card); resize:none; box-sizing:border-box; line-height:1.5; outline:none; transition:border-color .18s; -webkit-appearance:none; }
+    .day-memo-area textarea:focus { border-color:var(--pri); }
+    .note-dot { width:4px; height:4px; border-radius:50%; background:var(--muted); margin:1px auto 0; }
+
     /* 폼 */
     .fg { margin-bottom:14px; position:relative; }
     .site-dropdown { display:none; position:absolute; top:calc(100% - 6px); left:0; right:0; background:var(--card); border:1.5px solid var(--pri); border-top:none; border-radius:0 0 11px 11px; box-shadow:0 6px 20px rgba(0,0,0,.13); z-index:200; max-height:220px; overflow-y:auto; }
@@ -711,6 +717,11 @@
     <div class="sh-handle"></div>
     <div class="sh-title" id="dayOvTitle"></div>
     <div id="dayOvWorks"></div>
+    <div class="day-memo-area">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px">오늘 한 일 <span style="font-weight:400">(개인 메모)</span></div>
+      <textarea id="inDayMemo" placeholder="3층 거실 몰딩 작업, 현관 문틀 마감..." rows="3" onblur="saveDailyNote()"></textarea>
+      <div id="dayMemoSaved" style="display:none;font-size:11px;color:var(--green);margin-top:4px;text-align:right">저장됨 ✓</div>
+    </div>
     <button class="btn-out" style="margin-top:14px" onclick="openWorkOv(null, selDate)">+ 이 날 작업 추가</button>
   </div>
 </div>
@@ -1117,7 +1128,7 @@ const WORK_COLORS = [
 function getColor(id) { return WORK_COLORS.find(c=>c.id===id) || WORK_COLORS[0]; }
 
 let currentUser = null;
-let DB = { works: [], payments: [], jobs: [], notifications: [] };
+let DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
 // ── 팀 모드 상태 ──
 let dataMode = 'personal'; // 'personal' | 'team' | 'pending'
 let activeTeamId = null;
@@ -1148,6 +1159,22 @@ function toggleInfoSection(force) {
   const open=force!==undefined?force:!body.classList.contains('open');
   body.classList.toggle('open',open);
   arrow.classList.toggle('open',open);
+}
+
+// ── 일일 메모 ──
+async function saveDailyNote() {
+  if (!selDate || !currentUser) return;
+  const text = document.getElementById('inDayMemo').value.trim();
+  if (text) { DB.dailyNotes[selDate] = text; } else { delete DB.dailyNotes[selDate]; }
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  renderCal();
+  try {
+    const ref = fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate);
+    if (text) { await ref.set({ text, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+    else { await ref.delete(); }
+    const el = document.getElementById('dayMemoSaved');
+    if (el) { el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 1500); }
+  } catch(e) { console.error('일일 메모 저장 오류:', e); }
 }
 
 // ── 현장 자동완성 ──
@@ -1584,7 +1611,7 @@ async function loadData() {
     const local = localStorage.getItem('moksujilji2');
     if (local) {
       const parsed = JSON.parse(local);
-      DB = { works: parsed.works||[], payments: parsed.payments||[], jobs: parsed.jobs||[], notifications: parsed.notifications||[] };
+      DB = { works: parsed.works||[], payments: parsed.payments||[], jobs: parsed.jobs||[], notifications: parsed.notifications||[], dailyNotes: parsed.dailyNotes||{} };
     }
   }
   updateHeader();
@@ -1636,10 +1663,13 @@ async function migrateFromDisbandedTeam(userRef, teamDoc) {
 
 async function loadPersonalData(userRef) {
   const ref = userRef || fsdb.collection('users').doc(currentUser.uid);
-  const [worksSnap, paysSnap] = await Promise.all([
+  const [worksSnap, paysSnap, notesSnap] = await Promise.all([
     ref.collection('works').get(),
-    ref.collection('payments').get()
+    ref.collection('payments').get(),
+    ref.collection('dailyNotes').get()
   ]);
+  DB.dailyNotes = {};
+  notesSnap.docs.forEach(d => { if(d.data().text) DB.dailyNotes[d.id] = d.data().text; });
 
   if (!worksSnap.empty || !paysSnap.empty) {
     // 서브컬렉션 방식으로 로드
@@ -2024,7 +2054,7 @@ async function deleteTeam() {
 
     activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     dataMode = 'personal';
-    DB = { works: [], payments: [], jobs: [], notifications: [] };
+    DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
     await loadData();
     renderTeamSettings();
     showToast('팀이 해체되었습니다. 기록이 개인으로 이관되었어요.');
@@ -2350,7 +2380,7 @@ function renderCal() {
         if(wd===0)cls+=' sunday';
         if(wd===6)cls+=' saturday';
         if(holi)cls+=' holiday';
-        html+=`<div class="${cls}" onclick="openDayOv('${cell.ds}')"><span class="dnum">${cell.d}</span>${holi?`<div class="holi">${holi}</div>`:''}</div>`;
+        html+=`<div class="${cls}" onclick="openDayOv('${cell.ds}')"><span class="dnum">${cell.d}</span>${holi?`<div class="holi">${holi}</div>`:''}${DB.dailyNotes[cell.ds]?'<div class="note-dot"></div>':''}</div>`;
       }
     });
     html+='</div>';
@@ -2404,6 +2434,8 @@ function openDayOv(ds) {
       </div>
     `).join('');
   }
+  document.getElementById('inDayMemo').value = DB.dailyNotes[ds] || '';
+  document.getElementById('dayMemoSaved').style.display = 'none';
   openOv('dayOv');
 }
 
@@ -3576,7 +3608,7 @@ auth.onAuthStateChanged(user => {
   } else {
     currentUser = null;
     stopPendingListener();
-    DB = { works: [], payments: [], jobs: [] };
+    DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
     dataMode = 'personal'; activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     loginScreen.style.display = 'flex';
   }
