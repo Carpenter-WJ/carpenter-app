@@ -17,11 +17,12 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // index.html: 항상 네트워크에서 가져오고 HTTP 캐시 완전 우회
-  if (e.request.url.endsWith('/') || e.request.url.includes('index.html')) {
+  // 앱 핵심 파일: 항상 네트워크에서 가져오고 HTTP 캐시 완전 우회
+  const url = e.request.url;
+  if (url.endsWith('/') || url.includes('index.html') || url.includes('app.js') || url.includes('style.css')) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })
-        .catch(() => caches.match('./index.html'))
+        .catch(() => caches.match(e.request))
     );
     return;
   }
