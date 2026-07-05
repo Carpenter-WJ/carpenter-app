@@ -1372,7 +1372,7 @@ function openDayOv(ds) {
   } else {
     document.getElementById('dayOvWorks').innerHTML=works.map(w=>`
       <div class="dm-work">
-        <div class="dm-site">${w.site}${dataMode==='team'?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${memberName(w.ownerUid||w.createdBy)}</span>`:''}</div>
+        <div class="dm-site">${w.site}${dataMode==='team'&&!w.isPersonal?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${memberName(w.ownerUid||w.createdBy)}</span>`:''}</div>
         <div class="dm-wage">${w.wage!=null?fmtW(w.wage):'비공개'}</div>
         <button class="dm-edit" onclick="openWorkOv('${w.id}',null)">✏️</button>
       </div>
