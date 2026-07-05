@@ -60,7 +60,7 @@ let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
-let workSearch = '', showCompleted = false;
+let workSearch = '';
 let showWeekSum = localStorage.getItem('showWeekSum') !== 'false';
 let curTab = 'cal';
 let selDate = null;
@@ -426,9 +426,8 @@ function isPayOut(w) {
   return dataMode === 'team' && teamRole === 'leader' && !w.isPersonal;
 }
 
-// 현장 상태: 완료 > 예정(전체 날짜가 미래) > 진행 중
+// 현장 상태: 예정(전체 날짜가 미래) > 진행 중
 function getWorkStatus(w) {
-  if (w.completed) return 'completed';
   const today = todayStr();
   if ((w.dates||[]).length > 0 && (w.dates||[]).every(d => d > today)) return 'planned';
   return 'active';
@@ -1282,7 +1281,7 @@ function renderCal() {
 
   // 연속 날짜 구간별 바 계산 (예정/완료 포함, status 구분)
   const bars=[];
-  DB.works.filter(w=>!w.completed).forEach(w=>{
+  DB.works.forEach(w=>{
     const md=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).sort();
     if(!md.length) return;
     const wStatus=getWorkStatus(w);
@@ -1480,19 +1479,6 @@ function openWorkOv(workId, prefillDate) {
   }
   renderColorChips();
   renderDateChips();
-  // 완료 처리 버튼: 수정 모드이고 아직 완료 안 된 현장에서만 표시
-  const completeBtn = document.getElementById('completeWorkBtn');
-  if (completeBtn) {
-    const w = workId ? DB.works.find(x => x.id === workId) : null;
-    completeBtn.style.display = (workId && w && !w.completed) ? 'block' : 'none';
-    if (w && isPayOut(w)) {
-      completeBtn.textContent = '✓ 현장 완료 처리 (팀원에게 자동 반영)';
-    } else if (w && dataMode === 'team' && !w.isPersonal) {
-      completeBtn.textContent = '✓ 완료 요청 보내기';
-    } else {
-      completeBtn.textContent = '✓ 현장 완료 처리';
-    }
-  }
   openOv('workOv');
 }
 
@@ -1598,8 +1584,6 @@ function renderNotifBanner() {
   el.innerHTML=DB.notifications.map(n=>{
     let actionBtn='';
     if(teamRole==='leader'){
-      if(n.type==='complete_request')
-        actionBtn=`<button onclick="approveComplete('${n.wageId}','${n.id}')" style="font-size:11px;font-weight:700;background:var(--pri);color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;margin-left:6px;flex-shrink:0">완료 승인</button>`;
       if(n.type==='pay_request')
         actionBtn=`<button onclick="openPayDetail('${n.wageId}');markNotifRead('${n.id}')" style="font-size:11px;font-weight:700;background:var(--pri);color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;margin-left:6px;flex-shrink:0">정산 처리</button>`;
     }
@@ -1623,7 +1607,6 @@ function createNotification(toUid, type, wageId, site) {
   const msgs = {
     wage_modified: `팀장이 "${site}" 일당을 수정했어요`,
     wage_added: `팀장이 "${site}" 작업을 등록해줬어요`,
-    complete_request: `"${site}" 현장 완료 처리를 요청했어요`,
     pay_request: `"${site}" 정산을 요청했어요`,
   };
   const msg = msgs[type] || `팀장이 "${site}" 작업을 등록해줬어요`;
@@ -1631,48 +1614,6 @@ function createNotification(toUid, type, wageId, site) {
     toUid, fromUid:currentUser.uid, type, wageId, site, message:msg,
     isRead:false, createdAt:firebase.firestore.FieldValue.serverTimestamp()
   }).catch(e=>console.error('알림 저장 오류:',e));
-}
-
-async function completeWork(workId) {
-  const w = DB.works.find(x => x.id === workId);
-  if(!w) return;
-  // 팀 모드 팀원 → 완료 요청 알림 전송
-  if(dataMode === 'team' && teamRole !== 'leader' && !w.isPersonal) {
-    if(!confirm(`"${w.site}" 현장 완료 요청을 팀장에게 보낼까요?`)) return;
-    if(teamInfo?.leaderUid) createNotification(teamInfo.leaderUid, 'complete_request', w.id, w.site);
-    showToast('팀장에게 완료 요청을 보냈어요');
-    closeAll(); return;
-  }
-  if(!confirm(`"${w.site}" 현장을 완료 처리할까요?\n완료된 현장은 기록 탭에서 숨겨집니다.`)) return;
-  // 같은 jobId 기록 전체 완료 처리
-  const targets = w.jobId ? DB.works.filter(x => x.jobId === w.jobId) : [w];
-  targets.forEach(x => x.completed = true);
-  if(w.jobId) {
-    const j = DB.jobs.find(x => x.id === w.jobId);
-    if(j) j.completed = true;
-    saveJobInfo(w.jobId, { completed: true });
-  }
-  await Promise.all(targets.map(x => saveOneWork(x)));
-  localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  showToast(`"${w.site}" 완료 처리됐어요`);
-  closeAll(); renderWork();
-}
-
-async function approveComplete(wageId, notifId) {
-  const w = DB.works.find(x => x.id === wageId);
-  if(!w) return;
-  const targets = w.jobId ? DB.works.filter(x => x.jobId === w.jobId) : [w];
-  targets.forEach(x => x.completed = true);
-  if(w.jobId) {
-    const j = DB.jobs.find(x => x.id === w.jobId);
-    if(j) j.completed = true;
-    saveJobInfo(w.jobId, { completed: true });
-  }
-  await Promise.all(targets.map(x => saveOneWork(x)));
-  localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  markNotifRead(notifId);
-  showToast(`"${w.site}" 완료 승인했어요`);
-  renderWork();
 }
 
 function requestPay(workId) {
@@ -1696,9 +1637,21 @@ async function bulkSetPaid() {
   if (!checked.length) return;
   if (!confirm(`선택한 ${checked.length}개 현장을 지급 완료 처리할까요?`)) return;
   const targets = DB.works.filter(w => checked.includes(w.id));
-  targets.forEach(w => w.isPaid = true);
+  const newPays = [];
+  targets.forEach(w => {
+    w.isPaid = true;
+    const outstanding = Math.max(0, (expAmt(w)||0) - rcvAmt(w.id));
+    if (outstanding > 0) {
+      const newPay = {id:'p_'+Date.now()+'_'+w.id, workId:w.id, date:todayStr(), amount:outstanding, note:'정산 완료 처리', createdBy:currentUser.uid};
+      DB.payments.push(newPay);
+      newPays.push(newPay);
+    }
+  });
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  await Promise.all(targets.map(w => updateOneWage(w)));
+  await Promise.all([
+    ...targets.map(w => updateOneWage(w)),
+    ...newPays.map(p => saveOnePay(p))
+  ]);
   showToast(`${checked.length}개 현장 지급 완료 처리됐어요`);
   renderPay();
 }
@@ -2089,13 +2042,6 @@ function onWorkSearch() {
   workSearch = document.getElementById('workSearchInput').value.trim().toLowerCase();
   renderWork();
 }
-function toggleShowCompleted() {
-  showCompleted = !showCompleted;
-  const btn = document.getElementById('completedToggleBtn');
-  if(btn) { btn.style.color = showCompleted ? 'var(--pri)' : 'var(--muted)'; btn.style.borderColor = showCompleted ? 'var(--pri)' : 'var(--border)'; }
-  renderWork();
-}
-
 function renderWork() {
   renderNotifBanner();
   document.getElementById('workLbl').textContent=`${workY}년 ${workM+1}월`;
@@ -2108,11 +2054,7 @@ function renderWork() {
     base = DB.works.filter(w => (w.dates||[]).some(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}));
   }
 
-  // 완료 현장 필터
-  const hasCompleted = DB.works.some(w => w.completed);
-  const completedToggleBtn = document.getElementById('completedToggleBtn');
-  if (completedToggleBtn) completedToggleBtn.style.display = hasCompleted ? 'inline-block' : 'none';
-  const filtered = showCompleted ? base : base.filter(w => !w.completed);
+  const filtered = base;
 
   // 통계에는 예정 현장 제외 (실제 작업일/일당만 집계)
   const activeFiltered=filtered.filter(w=>getWorkStatus(w)==='active');
@@ -2343,10 +2285,18 @@ async function togglePaid() {
   const w=DB.works.find(x=>x.id===selWorkId);
   if(!w)return;
   w.isPaid=!w.isPaid;
+  if(w.isPaid) {
+    const outstanding=Math.max(0,(expAmt(w)||0)-rcvAmt(selWorkId));
+    if(outstanding>0) {
+      const newPay={id:'p_'+Date.now(),workId:selWorkId,date:todayStr(),amount:outstanding,note:'정산 완료 처리',createdBy:currentUser.uid};
+      DB.payments.push(newPay);
+      try { await saveOnePay(newPay); } catch(e) { console.error('정산 기록 저장 오류:', e); }
+    }
+  }
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
   try { await updateOneWage(w); } catch(e) { console.error('저장 오류:', e); }
   document.getElementById('paidToggle').classList.toggle('on',w.isPaid);
-  document.getElementById('pdShareBtn').style.display = Math.max(0,expAmt(w)-rcvAmt(selWorkId))>0&&!w.isPaid?'block':'none';
+  document.getElementById('pdShareBtn').style.display = Math.max(0,(expAmt(w)||0)-rcvAmt(selWorkId))>0&&!w.isPaid?'block':'none';
   renderPay();
 }
 

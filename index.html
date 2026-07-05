@@ -82,7 +82,6 @@
   <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 8px">
     <div class="sec-title" id="workSecTitle" style="margin:0"></div>
     <div style="display:flex;gap:8px;align-items:center">
-      <button id="completedToggleBtn" onclick="toggleShowCompleted()" style="display:none;font-size:11px;font-weight:600;color:var(--muted);background:var(--chip-bg,#f5f5f5);border:1.5px solid var(--border);border-radius:20px;padding:4px 10px;cursor:pointer">완료 현장</button>
       <button onclick="toggleWorkSearch()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 2px;line-height:1">⌕</button>
     </div>
   </div>
@@ -374,7 +373,6 @@
       <button class="add-date-btn" onclick="openDatePickOv()">+ 날짜 추가</button>
     </div>
     <button class="btn-pri" onclick="saveWork()">저장</button>
-    <button id="completeWorkBtn" onclick="completeWork(document.getElementById('editWorkId').value)" style="display:none;width:100%;margin-top:8px;padding:14px;background:none;border:1.5px solid var(--border);border-radius:14px;font-size:15px;font-weight:700;color:var(--muted);cursor:pointer">✓ 현장 완료 처리</button>
   </div>
 </div>
 
