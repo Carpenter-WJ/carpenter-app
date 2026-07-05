@@ -25,9 +25,14 @@
       padding:14px 18px 12px;
       padding-top:calc(14px + env(safe-area-inset-top));
       position:sticky; top:0; z-index:100;
+      display:flex; align-items:center; justify-content:space-between;
     }
+    .hdr-left { flex:1; min-width:0; }
     .hdr h1 { font-size:19px; font-weight:700; }
     .hdr .sub { font-size:12px; opacity:.8; margin-top:1px; }
+    .hdr-bell { background:none; border:none; color:#fff; cursor:pointer; padding:4px; position:relative; flex-shrink:0; opacity:.9; }
+    .hdr-bell:active { opacity:.6; }
+    .hdr-notif-badge { position:absolute; top:0; right:0; background:var(--red); color:#fff; font-size:9px; font-weight:800; min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:1.5px solid var(--dark); }
 
     /* 탭바 */
     .tabbar {
@@ -155,14 +160,25 @@
     .wi-total { font-size:17px; font-weight:700; color:var(--pri); }
     .wi-del { background:none; border:none; color:var(--muted); font-size:16px; padding:4px 0 4px 6px; cursor:pointer; }
     .wi-who { font-size:13px; font-weight:700; color:var(--text2); }
-    /* 알림 배지 */
-    .tbtn-wrap { position:relative; flex:1; display:flex; flex-direction:column; align-items:center; }
-    .notif-badge { position:absolute; top:4px; right:calc(50% - 20px); background:var(--red); color:#fff; font-size:9px; font-weight:800; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid var(--tabbar-bg,#fff); }
-    /* 알림 배너 */
-    .notif-banner { margin:0 14px 10px; display:flex; flex-direction:column; gap:6px; }
-    .notif-item { background:var(--card); border-radius:12px; padding:11px 14px; display:flex; align-items:center; justify-content:space-between; border-left:4px solid var(--pri); }
-    .notif-msg { font-size:13px; font-weight:500; color:var(--text); flex:1; }
-    .notif-close { background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:0 0 0 10px; flex-shrink:0; }
+    /* 알림 패널 */
+    .notif-overlay { position:fixed; inset:0; z-index:97; background:rgba(0,0,0,.25); }
+    .notif-panel { position:fixed; left:0; right:0; top:calc(54px + env(safe-area-inset-top)); z-index:98; background:var(--bg); box-shadow:0 8px 28px rgba(0,0,0,.18); border-radius:0 0 20px 20px; max-height:0; overflow:hidden; transition:max-height .28s cubic-bezier(.4,0,.2,1); }
+    .notif-panel.open { max-height:65vh; overflow-y:auto; }
+    .notif-panel-head { display:flex; align-items:center; padding:14px 16px 10px; border-bottom:1px solid var(--border); }
+    .notif-panel-title { font-size:16px; font-weight:700; flex:1; }
+    .notif-read-all { background:none; border:none; color:var(--pri); font-size:13px; font-weight:600; cursor:pointer; padding:4px 8px; }
+    .notif-read-all:disabled { color:var(--muted); cursor:default; }
+    .notif-list { display:flex; flex-direction:column; }
+    .notif-item { padding:13px 16px; display:flex; gap:12px; align-items:flex-start; border-bottom:1px solid var(--border); background:var(--bg); transition:background .15s; }
+    .notif-item.unread { background:rgba(211,84,0,.05); }
+    .notif-item-icon { font-size:18px; flex-shrink:0; margin-top:1px; }
+    .notif-item-body { flex:1; min-width:0; }
+    .notif-item-msg { font-size:13px; font-weight:500; color:var(--text); line-height:1.4; }
+    .notif-item.unread .notif-item-msg { font-weight:700; }
+    .notif-item-time { font-size:11px; color:var(--muted); margin-top:3px; }
+    .notif-item-action { margin-top:7px; }
+    .notif-item-action button { font-size:11px; font-weight:700; background:var(--pri); color:#fff; border:none; border-radius:8px; padding:4px 12px; cursor:pointer; }
+    .notif-empty { padding:40px 16px; text-align:center; color:var(--muted); font-size:14px; }
     /* 공유 설정 */
     .vis-seg { display:flex; gap:6px; margin-top:6px; }
     .vis-btn { flex:1; border:1.5px solid var(--border); background:none; color:var(--muted); border-radius:8px; padding:7px 4px; font-size:12px; font-weight:600; cursor:pointer; }

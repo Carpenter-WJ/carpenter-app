@@ -42,8 +42,22 @@
 </div>
 
 <div class="hdr">
-  <h1 id="hTit">목수 일지</h1>
-  <div id="teamIndicator" class="sub" style="display:none"></div>
+  <div class="hdr-left">
+    <h1 id="hTit">목수 일지</h1>
+    <div id="teamIndicator" class="sub" style="display:none"></div>
+  </div>
+  <button id="notifBtn" class="hdr-bell" onclick="toggleNotifPanel()" style="display:none" aria-label="알림">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    <span id="notifBadge" class="hdr-notif-badge" style="display:none"></span>
+  </button>
+</div>
+<div id="notifOverlay" class="notif-overlay" onclick="closeNotifPanel()" style="display:none"></div>
+<div id="notifPanel" class="notif-panel">
+  <div class="notif-panel-head">
+    <span class="notif-panel-title">알림</span>
+    <button id="notifReadAllBtn" class="notif-read-all" onclick="markAllRead()">전체 읽음</button>
+  </div>
+  <div id="notifList" class="notif-list"></div>
 </div>
 
 <!-- 달력 탭 -->
@@ -73,7 +87,6 @@
 
 <!-- 기록 탭 -->
 <div class="page" id="page-work">
-  <div id="notifBanner" class="notif-banner" style="padding-top:10px;display:none"></div>
   <div class="stat-nav">
     <button onclick="moveWork(-1)">‹</button>
     <span class="sm" id="workLbl"></span>
@@ -239,7 +252,7 @@
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 9h18"/><path d="M8 14h.01M12 14h.01M16 14h.01"/></svg>달력
   </button>
   <button class="tbtn" onclick="goTab('work',this)" style="position:relative">
-    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/><path d="M9 21v-5h6v5"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2"/></svg>현장<span id="notifBadge" class="notif-badge" style="display:none"></span>
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/><path d="M9 21v-5h6v5"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2"/></svg>현장
   </button>
   <button class="tbtn" onclick="goTab('pay',this)">
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1.5 2 1.5 2-1.5 2 1.5 2-1.5 2 1.5 2-1.5 2 1.5V2l-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>정산

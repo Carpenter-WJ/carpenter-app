@@ -385,7 +385,7 @@ async function loadTeamData() {
     const p = d.data();
     return { id: d.id, date: p.date, amount: p.amount, note: p.note, createdBy: p.createdBy, workId: p.wageId };
   });
-  DB.notifications = notifSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(n => !n.isRead);
+  DB.notifications = notifSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   teamMembers = membersSnap.docs.map(d => d.data()).sort((a, b) => (a.role === 'leader' ? -1 : b.role === 'leader' ? 1 : 0));
   teamMemberExits = [];
   if (isLeader) {
@@ -915,9 +915,9 @@ function startNotifListener(teamId) {
       .where('toUid', '==', currentUser.uid)
       .onSnapshot(snap => {
         if (dataMode !== 'team') return;
-        DB.notifications = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(n => !n.isRead);
+        DB.notifications = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         updateNotifBadge();
-        renderNotifBanner();
+        renderNotifPanel();
       }, e => console.warn('알림 실시간 수신 오류:', e.message));
   } catch(e) { console.warn('알림 리스너 시작 오류:', e.message); }
 }
@@ -1591,38 +1591,96 @@ function getSelectedVisibility() {
 }
 
 function updateNotifBadge() {
-  const badge=document.getElementById('notifBadge');
-  if(!badge) return;
-  const cnt=DB.notifications.length;
-  badge.style.display=cnt>0?'':'none';
-  badge.textContent=cnt>0?cnt:'';
+  const badge = document.getElementById('notifBadge');
+  const btn = document.getElementById('notifBtn');
+  if (!badge || !btn) return;
+  const isTeam = dataMode === 'team';
+  btn.style.display = isTeam ? '' : 'none';
+  if (!isTeam) return;
+  const cnt = DB.notifications.filter(n => !n.isRead).length;
+  badge.style.display = cnt > 0 ? '' : 'none';
+  badge.textContent = cnt > 0 ? cnt : '';
+  const readAllBtn = document.getElementById('notifReadAllBtn');
+  if (readAllBtn) readAllBtn.disabled = cnt === 0;
 }
 
-function renderNotifBanner() {
-  const el=document.getElementById('notifBanner');
-  if(!el) return;
-  if(dataMode!=='team' || DB.notifications.length===0){ el.style.display='none'; return; }
-  el.style.display='';
-  el.innerHTML=DB.notifications.map(n=>{
-    let actionBtn='';
-    if(teamRole==='leader'){
-      if(n.type==='pay_request')
-        actionBtn=`<button onclick="openPayDetail('${n.wageId}');markNotifRead('${n.id}')" style="font-size:11px;font-weight:700;background:var(--pri);color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;margin-left:6px;flex-shrink:0">정산 처리</button>`;
+function relTime(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return '방금 전';
+  if (s < 3600) return `${Math.floor(s/60)}분 전`;
+  if (s < 86400) return `${Math.floor(s/3600)}시간 전`;
+  if (s < 86400*30) return `${Math.floor(s/86400)}일 전`;
+  return d.toLocaleDateString('ko-KR', {month:'numeric', day:'numeric'});
+}
+
+const NOTIF_ICON = { pay_request:'💰', wage_modified:'✏️', wage_added:'➕', work_deleted:'🗑️' };
+
+function renderNotifPanel() {
+  const el = document.getElementById('notifList');
+  if (!el) return;
+  const sorted = [...DB.notifications].sort((a, b) => {
+    const ta = a.createdAt?.toDate?.() || new Date(0);
+    const tb = b.createdAt?.toDate?.() || new Date(0);
+    return tb - ta;
+  });
+  if (sorted.length === 0) {
+    el.innerHTML = '<div class="notif-empty">새 알림이 없어요</div>';
+    return;
+  }
+  el.innerHTML = sorted.map(n => {
+    const icon = NOTIF_ICON[n.type] || '🔔';
+    const unread = !n.isRead;
+    let actionHtml = '';
+    if (unread && teamRole === 'leader' && n.type === 'pay_request') {
+      actionHtml = `<div class="notif-item-action"><button onclick="openPayDetail('${n.wageId}');markNotifRead('${n.id}');closeNotifPanel()">정산 처리</button></div>`;
     }
     return `
-      <div class="notif-item" style="display:flex;align-items:center;gap:4px">
-        <div class="notif-msg" style="flex:1">${n.message||''}</div>
-        ${actionBtn}
-        <button class="notif-close" onclick="markNotifRead('${n.id}')">✕</button>
+      <div class="notif-item${unread?' unread':''}">
+        <div class="notif-item-icon">${icon}</div>
+        <div class="notif-item-body">
+          <div class="notif-item-msg">${n.message||''}</div>
+          <div class="notif-item-time">${relTime(n.createdAt)}</div>
+          ${actionHtml}
+        </div>
+        ${unread?`<button onclick="markNotifRead('${n.id}')" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 0 0 8px;flex-shrink:0;align-self:center">✕</button>`:''}
       </div>`;
   }).join('');
 }
 
+function toggleNotifPanel() {
+  const panel = document.getElementById('notifPanel');
+  const overlay = document.getElementById('notifOverlay');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  overlay.style.display = isOpen ? 'none' : 'block';
+}
+
+function closeNotifPanel() {
+  document.getElementById('notifPanel')?.classList.remove('open');
+  const overlay = document.getElementById('notifOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function markAllRead() {
+  const unread = DB.notifications.filter(n => !n.isRead);
+  if (!unread.length) return;
+  unread.forEach(n => { n.isRead = true; });
+  updateNotifBadge();
+  renderNotifPanel();
+  await Promise.all(unread.map(n =>
+    teamRef().collection('notifications').doc(n.id).update({isRead:true}).catch(()=>{})
+  ));
+}
+
+
 function markNotifRead(notifId) {
   teamRef().collection('notifications').doc(notifId).update({isRead:true}).catch(()=>{});
-  DB.notifications=DB.notifications.filter(n=>n.id!==notifId);
+  const n = DB.notifications.find(x => x.id === notifId);
+  if (n) n.isRead = true;
   updateNotifBadge();
-  renderNotifBanner();
+  renderNotifPanel();
 }
 
 async function createNotification(toUid, type, wageId, site) {
@@ -2078,7 +2136,6 @@ function onWorkSearch() {
   renderWork();
 }
 function renderWork() {
-  renderNotifBanner();
   document.getElementById('workLbl').textContent=`${workY}년 ${workM+1}월`;
 
   // 검색 모드: 전체 기간에서 현장명 검색
