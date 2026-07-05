@@ -416,6 +416,11 @@ function memberName(uid) {
   return m ? (m.displayName || '이름 없음') : '팀원';
 }
 
+// 팀장이 팀원에게 지급해야 하는 기록 여부 (지급 관점 vs 수령 관점 분기 핵심)
+function isPayOut(w) {
+  return dataMode === 'team' && teamRole === 'leader' && !w.isPersonal;
+}
+
 // 기록/정산/통계 탭 공통 뱃지 — 팀 모드에서만 표시
 function workTypeBadge(w) {
   if (dataMode !== 'team') return '';
@@ -2001,8 +2006,10 @@ function renderWorkRow(w,y,m,standalone) {
   const badge=!wageVisible
     ?'<span class="wi-badge">비공개</span>'
     :w.isPaid
-    ?'<span class="wi-badge badge-paid">정산완료</span>'
-    :(rcv>0?'<span class="wi-badge badge-partial">부분정산</span>':'<span class="wi-badge badge-unpaid">미정산</span>');
+    ?`<span class="wi-badge badge-paid">${isPayOut(w)?'지급완료':'정산완료'}</span>`
+    :(rcv>0
+      ?`<span class="wi-badge badge-partial">${isPayOut(w)?'부분지급':'부분정산'}</span>`
+      :`<span class="wi-badge badge-unpaid">${isPayOut(w)?'미지급':'미정산'}</span>`);
   const mDates=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;});
   const u=Number(w.unit||1);
   const total=wageVisible?mDates.length*Number(w.wage)*u:null;
@@ -2040,15 +2047,16 @@ function renderPay() {
   },0);
   const mUnpaid=monthWorks.filter(w=>!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
 
+  const isLeaderPay = dataMode==='team' && teamRole==='leader' && monthWorks.some(w=>!w.isPersonal);
   document.getElementById('balArea').innerHTML=`
     <div class="bal-card">
       <div class="bc-row">
-        <div class="bc-item"><div class="bi-l">이달 총 일당</div><div class="bi-v">${fmtW(mWage)}</div></div>
-        <div class="bc-item"><div class="bi-l">이달 미수금</div><div class="bi-v" style="color:${mUnpaid>0?'var(--red)':'var(--muted)'}">${fmtW(mUnpaid)}</div></div>
+        <div class="bc-item"><div class="bi-l">${isLeaderPay?'이달 총 인건비':'이달 총 일당'}</div><div class="bi-v">${fmtW(mWage)}</div></div>
+        <div class="bc-item"><div class="bi-l">${isLeaderPay?'이달 미지급금':'이달 미수금'}</div><div class="bi-v" style="color:${mUnpaid>0?'var(--red)':'var(--muted)'}">${fmtW(mUnpaid)}</div></div>
       </div>
     </div>`;
 
-  document.getElementById('payFilterWrap').innerHTML=`<div style="display:flex;gap:6px">${[['all','전체'],['unpaid','미수금'],['done','완료']].map(([v,l])=>`<button onclick="setPayFilter('${v}')" style="background:${payFilter===v?'var(--pri)':'none'};color:${payFilter===v?'#fff':'var(--muted)'};border:1.5px solid ${payFilter===v?'var(--pri)':'var(--border)'};border-radius:20px;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer">${l}</button>`).join('')}</div>`;
+  document.getElementById('payFilterWrap').innerHTML=`<div style="display:flex;gap:6px">${[['all','전체'],['unpaid',isLeaderPay?'미지급':'미수금'],['done','완료']].map(([v,l])=>`<button onclick="setPayFilter('${v}')" style="background:${payFilter===v?'var(--pri)':'none'};color:${payFilter===v?'#fff':'var(--muted)'};border:1.5px solid ${payFilter===v?'var(--pri)':'var(--border)'};border-radius:20px;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer">${l}</button>`).join('')}</div>`;
 
   const el=document.getElementById('pList');
   if(monthWorks.length===0){
@@ -2061,7 +2069,7 @@ function renderPay() {
     .sort((a,b)=>a.isPaid===b.isPaid?0:a.isPaid?1:-1);
 
   if(filtered.length===0){
-    el.innerHTML=`<div class="es" style="padding:32px 24px"><div class="es-title" style="font-size:15px">${payFilter==='done'?'완료된 현장이 없어요':'미수금이 없어요 🎉'}</div></div>`;
+    el.innerHTML=`<div class="es" style="padding:32px 24px"><div class="es-title" style="font-size:15px">${payFilter==='done'?'완료된 현장이 없어요':(isLeaderPay?'미지급금이 없어요 🎉':'미수금이 없어요 🎉')}</div></div>`;
     return;
   }
 
@@ -2069,9 +2077,11 @@ function renderPay() {
     const exp=expAmt(w), rcv=rcvAmt(w.id), diff=rcv-exp;
     const c=getColor(w.color||'orange');
     const badge=w.isPaid
-      ?'<span class="wi-badge badge-paid" style="font-size:11px">정산완료</span>'
-      :(rcv>0?'<span class="wi-badge badge-partial" style="font-size:11px">부분정산</span>':'<span class="wi-badge badge-unpaid" style="font-size:11px">미정산</span>');
-    const diffHtml=diff===0?'':`<div class="pi-diff ${diff<0?'minus':'plus'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))} ${diff<0?'덜 받음':'더 받음'}</div>`;
+      ?`<span class="wi-badge badge-paid" style="font-size:11px">${isPayOut(w)?'지급완료':'정산완료'}</span>`
+      :(rcv>0
+        ?`<span class="wi-badge badge-partial" style="font-size:11px">${isPayOut(w)?'부분지급':'부분정산'}</span>`
+        :`<span class="wi-badge badge-unpaid" style="font-size:11px">${isPayOut(w)?'미지급':'미정산'}</span>`);
+    const diffHtml=diff===0?'':`<div class="pi-diff ${diff<0?'minus':'plus'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))} ${diff<0?(isPayOut(w)?'덜 줌':'덜 받음'):(isPayOut(w)?'더 줌':'더 받음')}</div>`;
     return `
       <div class="pitem" onclick="openPayDetail('${w.id}')" style="border-left:4px solid ${c.border}">
         <div class="pi-top">
@@ -2080,7 +2090,7 @@ function renderPay() {
             <div class="pi-meta">${formatDatesShort(w.dates)}</div>
           </div>
           <div class="pi-right">
-            <div class="pi-exp">예상 ${fmtW(exp)}</div>
+            <div class="pi-exp">${isPayOut(w)?'지급 예정':'예상'} ${fmtW(exp)}</div>
             <div class="pi-rcv">${fmtW(rcv)}</div>
             ${diffHtml}
           </div>
@@ -2113,12 +2123,19 @@ function openPayDetail(wId) {
     (w.contact||w.phone)&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">👤 ${[w.contact,w.phone].filter(Boolean).join(' · ')}</div>`,
     w.memo&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">📝 ${w.memo}</div>`,
   ].filter(Boolean).join('');
+  const payOut = isPayOut(w);
   document.getElementById('pdInfo').innerHTML=`
     ${formatDatesShort(w.dates)} · 일당 ${fmtW(w.wage)}<br>
-    예상 <b>${fmtW(exp)}</b> &nbsp;|&nbsp; 수령 <b>${fmtW(rcv)}</b>
+    ${payOut?'지급 예정':'예상'} <b>${fmtW(exp)}</b> &nbsp;|&nbsp; ${payOut?'지급':'수령'} <b>${fmtW(rcv)}</b>
     ${diff!==0?` &nbsp;|&nbsp; 차액 <b style="color:${diff<0?'var(--red)':'var(--green)'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))}</b>`:''}
     ${infoLines}
   `;
+  const addPayBtn = document.querySelector('#payDetailOv .btn-out');
+  if (addPayBtn) addPayBtn.textContent = payOut ? '+ 지급 금액 기록' : '+ 받은 금액 기록';
+  const ptLabel = document.querySelector('#payDetailOv .pt-label');
+  if (ptLabel) ptLabel.textContent = payOut ? '지급 완료' : '정산 완료';
+  const ptDesc = document.querySelector('#payDetailOv .paid-toggle div div:last-child');
+  if (ptDesc) ptDesc.textContent = payOut ? '수동으로 지급 완료 처리' : '수동으로 정산 완료 처리';
   const pays=DB.payments.filter(p=>p.workId===wId).sort((a,b)=>a.date.localeCompare(b.date));
   document.getElementById('pdPayRows').innerHTML=pays.length===0
     ?'<div class="empty" style="padding:20px 0">정산 내역이 없습니다</div>'
@@ -2561,18 +2578,19 @@ function renderStat() {
   const statSuffix=(dataMode==='team'&&teamRole!=='leader')?' (내 기록 기준)':'';
   document.getElementById('statSecTitle').textContent=statMonthLbl+' 작업 내역'+statSuffix;
 
+  const isLeaderStat = dataMode==='team' && teamRole==='leader';
   document.getElementById('statGrid').innerHTML=`
     <div class="sbox"><div class="sl">작업일수</div><div class="sv">${workDays}일</div></div>
     <div class="sbox"><div class="sl">품수</div><div class="sv">${sUnitStr}품</div></div>
     <div class="sbox"><div class="sl">현장 수</div><div class="sv">${works.length}곳</div></div>
-    <div class="sbox grn"><div class="sl">${statMonthLbl} 수령</div><div class="sv">${(mPaid/10000).toFixed(1)}만</div></div>
-    <div class="sbox ori"><div class="sl">총 임금</div><div class="sv">${(mWage/10000).toFixed(1)}만</div></div>
+    <div class="sbox grn"><div class="sl">${statMonthLbl} ${isLeaderStat?'지급':'수령'}</div><div class="sv">${(mPaid/10000).toFixed(1)}만</div></div>
+    <div class="sbox ori"><div class="sl">${isLeaderStat?'총 인건비':'총 임금'}</div><div class="sv">${(mWage/10000).toFixed(1)}만</div></div>
     <div class="sbox"><div class="sl">평균 일당</div><div class="sv">${workDays>0?fmtW(avgWage):'—'}</div></div>
     <div class="sbox ${mOutstanding>0?'red':'grn'}">
-      <div class="sl">${statMonthLbl} 미수금</div><div class="sv">${fmtW(mOutstanding)}</div>
+      <div class="sl">${statMonthLbl} ${isLeaderStat?'미지급금':'미수금'}</div><div class="sv">${fmtW(mOutstanding)}</div>
     </div>
     <div class="sbox ${allOutstanding>0?'red':'grn'}">
-      <div class="sl">전체 미수금</div><div class="sv">${fmtW(allOutstanding)}</div>
+      <div class="sl">${isLeaderStat?'전체 미지급금':'전체 미수금'}</div><div class="sv">${fmtW(allOutstanding)}</div>
     </div>`;
 
   const wl=document.getElementById('statWList');
