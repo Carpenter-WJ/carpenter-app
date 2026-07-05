@@ -55,6 +55,7 @@ let pendingTeamId = null;  // 가입 신청 대기 중인 팀 ID
 let pendingTeamName = '';  // 대기 중인 팀 이름
 let joinRequests = [];     // 팀장용 — 대기 중인 가입 신청 목록
 let _pendingListener = null;
+let _notifListener = null;
 const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
@@ -413,6 +414,7 @@ async function loadTeamData() {
     }
   } catch(e) { console.warn('개인 날일 기록 로드 오류:', e.message); }
   updateNotifBadge();
+  startNotifListener(activeTeamId);
 }
 
 function memberName(uid) {
@@ -902,6 +904,27 @@ function startPendingListener(teamId) {
 
 function stopPendingListener() {
   if (_pendingListener) { _pendingListener(); _pendingListener = null; }
+}
+
+function startNotifListener(teamId) {
+  if (_notifListener) { _notifListener(); _notifListener = null; }
+  if (!currentUser || !teamId) return;
+  try {
+    _notifListener = fsdb.collection('teams').doc(teamId)
+      .collection('notifications')
+      .where('toUid', '==', currentUser.uid)
+      .where('isRead', '==', false)
+      .onSnapshot(snap => {
+        if (dataMode !== 'team') return;
+        DB.notifications = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        updateNotifBadge();
+        renderNotifBanner();
+      }, e => console.warn('알림 실시간 수신 오류:', e.message));
+  } catch(e) { console.warn('알림 리스너 시작 오류:', e.message); }
+}
+
+function stopNotifListener() {
+  if (_notifListener) { _notifListener(); _notifListener = null; }
 }
 
 async function cancelJoinRequest() {
@@ -1619,7 +1642,11 @@ function createNotification(toUid, type, wageId, site) {
 function requestPay(workId) {
   const w = DB.works.find(x => x.id === workId);
   if(!w || !teamInfo?.leaderUid) return;
+  const sentKey = 'sentPayReq_' + activeTeamId;
+  const sent = JSON.parse(localStorage.getItem(sentKey) || '[]');
+  if(sent.includes(workId)) { showToast('이미 정산 요청을 보낸 현장이에요'); return; }
   createNotification(teamInfo.leaderUid, 'pay_request', workId, w.site);
+  localStorage.setItem(sentKey, JSON.stringify([...sent, workId]));
   showToast('팀장에게 정산 요청을 보냈어요');
 }
 
@@ -2857,6 +2884,7 @@ auth.onAuthStateChanged(user => {
   } else {
     currentUser = null;
     stopPendingListener();
+    stopNotifListener();
     DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
     dataMode = 'personal'; activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     loginScreen.style.display = 'flex';
