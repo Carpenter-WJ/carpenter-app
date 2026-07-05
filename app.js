@@ -2609,7 +2609,7 @@ function renderMemberStats() {
 
 function renderIncomeChart() {
   const months=[];
-  for(let i=5;i>=0;i--){
+  for(let i=2;i>=0;i--){
     let y=statY, m=statM-i;
     if(m<0){m+=12;y--;}
     const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
@@ -2617,7 +2617,7 @@ function renderIncomeChart() {
     months.push({y,m,wage,lbl:`${m+1}월`});
   }
   const max=Math.max(...months.map(x=>x.wage),1);
-  const chartH=90,padB=32,barW=30,gap=10;
+  const chartH=90,padB=32,barW=64,gap=20;
   const totalW=months.length*(barW+gap)-gap;
   const bars=months.map((mo,i)=>{
     const x=i*(barW+gap);
@@ -2856,22 +2856,29 @@ function renderStat() {
   const isCurStat=statY===now.getFullYear()&&statM===now.getMonth();
   const statMonthLbl=isCurStat?'이번 달':`${statY}년 ${statM+1}월`;
   const statSuffix=(dataMode==='team'&&teamRole!=='leader')?' (내 기록 기준)':'';
-  document.getElementById('statSecTitle').textContent=statMonthLbl+' 작업 내역'+statSuffix;
-
   const isLeaderStat = dataMode==='team' && teamRole==='leader';
-  document.getElementById('statGrid').innerHTML=`
-    <div class="sbox"><div class="sl">작업일수</div><div class="sv">${workDays}일</div></div>
-    <div class="sbox"><div class="sl">품수</div><div class="sv">${sUnitStr}품</div></div>
-    <div class="sbox"><div class="sl">현장 수</div><div class="sv">${works.length}곳</div></div>
-    <div class="sbox grn"><div class="sl">${statMonthLbl} ${isLeaderStat?'지급':'수령'}</div><div class="sv">${(mPaid/10000).toFixed(1)}만</div></div>
-    <div class="sbox ori"><div class="sl">${isLeaderStat?'총 인건비':'총 임금'}</div><div class="sv">${(mWage/10000).toFixed(1)}만</div></div>
-    <div class="sbox"><div class="sl">평균 일당</div><div class="sv">${workDays>0?fmtW(avgWage):'—'}</div></div>
-    <div class="sbox ${mOutstanding>0?'red':'grn'}">
-      <div class="sl">${statMonthLbl} ${isLeaderStat?'미지급금':'미수금'}</div><div class="sv">${fmtW(mOutstanding)}</div>
-    </div>
-    <div class="sbox ${allOutstanding>0?'red':'grn'}">
-      <div class="sl">${isLeaderStat?'전체 미지급금':'전체 미수금'}</div><div class="sv">${fmtW(allOutstanding)}</div>
+  document.getElementById('statHero').innerHTML=`
+    <div class="stat-hero">
+      <div class="stat-hero-lbl">${statMonthLbl} ${isLeaderStat?'총 인건비':'총 임금'}</div>
+      <div class="stat-hero-val">${(mWage/10000).toFixed(1)}만원</div>
+      <div class="stat-hero-row">
+        <div class="stat-hero-box">
+          <div class="shb-lbl">${isLeaderStat?'지급':'수령'}</div>
+          <div class="shb-val" style="color:var(--green)">${(mPaid/10000).toFixed(1)}만</div>
+        </div>
+        <div class="stat-hero-box">
+          <div class="shb-lbl">${isLeaderStat?'미지급금':'미수금'}</div>
+          <div class="shb-val" style="color:${(mOutstanding>0||allOutstanding>0)?'var(--red)':'var(--muted)'}">${(mOutstanding/10000).toFixed(1)}만</div>
+          ${allOutstanding!==mOutstanding?`<div class="shb-sub">전체 ${(allOutstanding/10000).toFixed(1)}만</div>`:''}
+        </div>
+      </div>
     </div>`;
+  document.getElementById('statSubGrid').innerHTML=`
+    <div class="ssb"><div class="ssl">작업일수</div><div class="ssv">${workDays}일</div></div>
+    <div class="ssb"><div class="ssl">품수</div><div class="ssv">${sUnitStr}품</div></div>
+    <div class="ssb"><div class="ssl">평균 일당</div><div class="ssv">${workDays>0?(avgWage/10000).toFixed(1)+'만':'—'}</div></div>`;
+  document.getElementById('statSecTitle').textContent=
+    (works.length>0?`${statMonthLbl} 작업 내역 · 총 ${works.length}곳`:`${statMonthLbl} 작업 내역`)+statSuffix;
 
   const wl=document.getElementById('statWList');
   if(works.length===0){wl.innerHTML=`<div class="es"><div class="es-icon">📊</div><div class="es-title">${statMonthLbl} 작업 기록이 없어요</div><div class="es-desc">현장 탭에서 현장을 추가하면<br>수입 통계가 자동으로 계산돼요</div></div>`;return;}

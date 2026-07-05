@@ -421,6 +421,22 @@
     .sbox.grn .sv { color:var(--green); }
     .sbox.red .sv { color:var(--red); }
 
+    /* 통계 탭 — 핵심 수치 히어로 */
+    .stat-hero { margin:8px 14px 4px; background:var(--card); border-radius:16px; padding:18px 16px; }
+    .stat-hero-lbl { font-size:12px; color:var(--muted); font-weight:600; margin-bottom:2px; }
+    .stat-hero-val { font-size:32px; font-weight:900; color:var(--fg); line-height:1.1; margin-bottom:14px; }
+    .stat-hero-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .stat-hero-box { background:var(--bg); border-radius:12px; padding:11px 14px; }
+    .shb-lbl { font-size:11px; color:var(--muted); font-weight:600; }
+    .shb-val { font-size:20px; font-weight:800; margin-top:3px; }
+    .shb-sub { font-size:10px; color:var(--muted); margin-top:2px; }
+
+    /* 통계 탭 — 보조 수치 3칸 */
+    .stat-sub-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:8px 14px 4px; }
+    .ssb { background:var(--card); border-radius:12px; padding:12px 14px; }
+    .ssl { font-size:11px; color:var(--muted); font-weight:600; }
+    .ssv { font-size:20px; font-weight:800; margin-top:3px; color:var(--fg); }
+
     /* 로그인 화면 */
     #loginScreen {
       position:fixed; inset:0; background:var(--dark);
