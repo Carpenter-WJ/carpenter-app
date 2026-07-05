@@ -2148,7 +2148,7 @@ async function delWork(id) {
   else if(curTab==='pay')renderPay();
 }
 
-// ── 기록 탭 ──
+// ── 현장 탭 ──
 function moveWork(d) {
   workM+=d; if(workM>11){workM=0;workY++;} if(workM<0){workM=11;workY--;} renderWork();
 }
@@ -2290,7 +2290,7 @@ function renderPay() {
 
   const el=document.getElementById('pList');
   if(monthWorks.length===0){
-    el.innerHTML='<div class="es"><div class="es-icon">🧾</div><div class="es-title">이달 현장이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>여기서 정산을 관리할 수 있어요</div></div>';
+    el.innerHTML='<div class="es"><div class="es-icon">🧾</div><div class="es-title">이달 현장이 없어요</div><div class="es-desc">현장 탭에서 현장을 추가하면<br>여기서 정산을 관리할 수 있어요</div></div>';
     return;
   }
 
@@ -2852,7 +2852,7 @@ function renderStat() {
     </div>`;
 
   const wl=document.getElementById('statWList');
-  if(works.length===0){wl.innerHTML=`<div class="es"><div class="es-icon">📊</div><div class="es-title">${statMonthLbl} 작업 기록이 없어요</div><div class="es-desc">기록 탭에서 현장을 추가하면<br>수입 통계가 자동으로 계산돼요</div></div>`;return;}
+  if(works.length===0){wl.innerHTML=`<div class="es"><div class="es-icon">📊</div><div class="es-title">${statMonthLbl} 작업 기록이 없어요</div><div class="es-desc">현장 탭에서 현장을 추가하면<br>수입 통계가 자동으로 계산돼요</div></div>`;return;}
   wl.innerHTML=works.map(w=>{
     const mDates=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;});
     const u=Number(w.unit||1);
