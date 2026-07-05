@@ -1357,9 +1357,9 @@ function renderCal() {
       html+='</div>';
     }
 
-    // 주간 수입 합계 (예정 현장 제외, 설정 켜진 경우만)
+    // 주간 수입 합계 (예정·팀원 인건비 제외, 설정 켜진 경우만)
     if(showWeekSum){
-      const wkWage=DB.works.filter(w=>getWorkStatus(w)==='active'&&w.wage!=null).reduce((s,w)=>{
+      const wkWage=DB.works.filter(w=>getWorkStatus(w)==='active'&&w.wage!=null&&!isPayOut(w)).reduce((s,w)=>{
         const cnt=(w.dates||[]).filter(d=>wk.some(cell=>cell.ds&&cell.ds===d)).length;
         return s+cnt*Number(w.wage)*Number(w.unit||1);
       },0);
