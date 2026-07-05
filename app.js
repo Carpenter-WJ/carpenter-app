@@ -1652,6 +1652,8 @@ function renderNotifPanel() {
 function toggleNotifPanel() {
   const panel = document.getElementById('notifPanel');
   const overlay = document.getElementById('notifOverlay');
+  const hdr = document.querySelector('.hdr');
+  if (hdr) panel.style.paddingTop = hdr.offsetHeight + 'px';
   const isOpen = panel.classList.contains('open');
   panel.classList.toggle('open', !isOpen);
   overlay.style.display = isOpen ? 'none' : 'block';
