@@ -1983,7 +1983,7 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
     newWorks.push({id:wId,site,workDesc,wage:m.wage,unit:m.unit,dates:sortedDates,isPaid:false,
       color:editColor,address,contact,phone,memo,
       createdBy:currentUser.uid,ownerUid:m.uid,jobId});
-    if(m.uid!==currentUser.uid) createNotification(m.uid,'wage_created',wId,site);
+    if(m.uid!==currentUser.uid) createNotification(m.uid,'wage_added',wId,site).catch(()=>{});
   });
   try{await batch.commit();}catch(e){alert(`저장 오류\n${e.message}`);return;}
 
@@ -2070,7 +2070,7 @@ async function saveWork() {
       saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
       // 팀장이 타인 일당 수정 시 알림
       if(isLeaderMode && (existing.ownerUid||existing.createdBy)!==currentUser.uid){
-        createNotification(existing.ownerUid||existing.createdBy,'wage_modified',existing.id,site);
+        createNotification(existing.ownerUid||existing.createdBy,'wage_modified',existing.id,site).catch(()=>{});
       }
     }
   } else {
@@ -2102,7 +2102,7 @@ async function saveWork() {
     _savedWork = w;
     // 팀장이 타인 대신 신규 등록 시 알림
     if(isLeaderMode && ownerUid!==currentUser.uid){
-      createNotification(ownerUid,'wage_created',wId,site);
+      createNotification(ownerUid,'wage_added',wId,site).catch(()=>{});
     }
   }
   DB.works.sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''));
@@ -2144,7 +2144,7 @@ async function delWork(id) {
           DB.payments.filter(p=>p.workId===id).forEach(p=>batch.delete(t.collection('payments').doc(p.id)));
           await batch.commit();
           if (work && work.ownerUid && work.ownerUid !== currentUser.uid) {
-            createNotification(work.ownerUid, 'work_deleted', id, work.site);
+            createNotification(work.ownerUid, 'work_deleted', id, work.site).catch(()=>{});
           }
         }
       } else {
@@ -2320,6 +2320,8 @@ function renderPay() {
   }
 
   updateBulkBar();
+  const _sentPayKey = 'sentPayReq_' + activeTeamId;
+  const _sentPays = JSON.parse(localStorage.getItem(_sentPayKey) || '[]');
   el.innerHTML=filtered.map(w=>{
     const exp=expAmt(w), rcv=rcvAmt(w.id), diff=rcv-exp;
     const c=getColor(w.color||'orange');
@@ -2337,8 +2339,6 @@ function renderPay() {
       :!w.isPaid&&agingDays>=30
       ?`<span class="wi-badge" style="background:rgba(255,149,0,.1);color:#FF9500;font-size:10px">⚠️ 30일 초과</span>`
       :'';
-    const _sentPayKey = 'sentPayReq_' + activeTeamId;
-    const _sentPays = JSON.parse(localStorage.getItem(_sentPayKey) || '[]');
     const _alreadySent = _sentPays.includes(w.id);
     const requestPayBtn=!w.isPaid&&w.wage!=null&&dataMode==='team'&&teamRole!=='leader'&&!w.isPersonal
       ?(_alreadySent
