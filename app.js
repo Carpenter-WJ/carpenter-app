@@ -60,6 +60,7 @@ let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
+let workSearch = '', showCompleted = false;
 let curTab = 'cal';
 let selDate = null;
 let selWorkId = null;
@@ -1454,6 +1455,19 @@ function openWorkOv(workId, prefillDate) {
   }
   renderColorChips();
   renderDateChips();
+  // 완료 처리 버튼: 수정 모드이고 아직 완료 안 된 현장에서만 표시
+  const completeBtn = document.getElementById('completeWorkBtn');
+  if (completeBtn) {
+    const w = workId ? DB.works.find(x => x.id === workId) : null;
+    completeBtn.style.display = (workId && w && !w.completed) ? 'block' : 'none';
+    if (w && isPayOut(w)) {
+      completeBtn.textContent = '✓ 현장 완료 처리 (팀원에게 자동 반영)';
+    } else if (w && dataMode === 'team' && !w.isPersonal) {
+      completeBtn.textContent = '✓ 완료 요청 보내기';
+    } else {
+      completeBtn.textContent = '✓ 현장 완료 처리';
+    }
+  }
   openOv('workOv');
 }
 
@@ -1556,11 +1570,21 @@ function renderNotifBanner() {
   if(!el) return;
   if(dataMode!=='team' || DB.notifications.length===0){ el.style.display='none'; return; }
   el.style.display='';
-  el.innerHTML=DB.notifications.map(n=>`
-    <div class="notif-item">
-      <div class="notif-msg">${n.message||''}</div>
-      <button class="notif-close" onclick="markNotifRead('${n.id}')">✕</button>
-    </div>`).join('');
+  el.innerHTML=DB.notifications.map(n=>{
+    let actionBtn='';
+    if(teamRole==='leader'){
+      if(n.type==='complete_request')
+        actionBtn=`<button onclick="approveComplete('${n.wageId}','${n.id}')" style="font-size:11px;font-weight:700;background:var(--pri);color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;margin-left:6px;flex-shrink:0">완료 승인</button>`;
+      if(n.type==='pay_request')
+        actionBtn=`<button onclick="openPayDetail('${n.wageId}');markNotifRead('${n.id}')" style="font-size:11px;font-weight:700;background:var(--pri);color:#fff;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;margin-left:6px;flex-shrink:0">정산 처리</button>`;
+    }
+    return `
+      <div class="notif-item" style="display:flex;align-items:center;gap:4px">
+        <div class="notif-msg" style="flex:1">${n.message||''}</div>
+        ${actionBtn}
+        <button class="notif-close" onclick="markNotifRead('${n.id}')">✕</button>
+      </div>`;
+  }).join('');
 }
 
 function markNotifRead(notifId) {
@@ -1571,11 +1595,66 @@ function markNotifRead(notifId) {
 }
 
 function createNotification(toUid, type, wageId, site) {
-  const msg=type==='wage_modified'?`팀장이 "${site}" 일당을 수정했어요`:`팀장이 "${site}" 작업을 등록해줬어요`;
+  const msgs = {
+    wage_modified: `팀장이 "${site}" 일당을 수정했어요`,
+    wage_added: `팀장이 "${site}" 작업을 등록해줬어요`,
+    complete_request: `"${site}" 현장 완료 처리를 요청했어요`,
+    pay_request: `"${site}" 정산을 요청했어요`,
+  };
+  const msg = msgs[type] || `팀장이 "${site}" 작업을 등록해줬어요`;
   teamRef().collection('notifications').add({
     toUid, fromUid:currentUser.uid, type, wageId, site, message:msg,
     isRead:false, createdAt:firebase.firestore.FieldValue.serverTimestamp()
   }).catch(e=>console.error('알림 저장 오류:',e));
+}
+
+async function completeWork(workId) {
+  const w = DB.works.find(x => x.id === workId);
+  if(!w) return;
+  // 팀 모드 팀원 → 완료 요청 알림 전송
+  if(dataMode === 'team' && teamRole !== 'leader' && !w.isPersonal) {
+    if(!confirm(`"${w.site}" 현장 완료 요청을 팀장에게 보낼까요?`)) return;
+    if(teamInfo?.leaderUid) createNotification(teamInfo.leaderUid, 'complete_request', w.id, w.site);
+    showToast('팀장에게 완료 요청을 보냈어요');
+    closeAll(); return;
+  }
+  if(!confirm(`"${w.site}" 현장을 완료 처리할까요?\n완료된 현장은 기록 탭에서 숨겨집니다.`)) return;
+  // 같은 jobId 기록 전체 완료 처리
+  const targets = w.jobId ? DB.works.filter(x => x.jobId === w.jobId) : [w];
+  targets.forEach(x => x.completed = true);
+  if(w.jobId) {
+    const j = DB.jobs.find(x => x.id === w.jobId);
+    if(j) j.completed = true;
+    saveJobInfo(w.jobId, { completed: true });
+  }
+  await Promise.all(targets.map(x => saveOneWork(x)));
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  showToast(`"${w.site}" 완료 처리됐어요`);
+  closeAll(); renderWork();
+}
+
+async function approveComplete(wageId, notifId) {
+  const w = DB.works.find(x => x.id === wageId);
+  if(!w) return;
+  const targets = w.jobId ? DB.works.filter(x => x.jobId === w.jobId) : [w];
+  targets.forEach(x => x.completed = true);
+  if(w.jobId) {
+    const j = DB.jobs.find(x => x.id === w.jobId);
+    if(j) j.completed = true;
+    saveJobInfo(w.jobId, { completed: true });
+  }
+  await Promise.all(targets.map(x => saveOneWork(x)));
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  markNotifRead(notifId);
+  showToast(`"${w.site}" 완료 승인했어요`);
+  renderWork();
+}
+
+function requestPay(workId) {
+  const w = DB.works.find(x => x.id === workId);
+  if(!w || !teamInfo?.leaderUid) return;
+  createNotification(teamInfo.leaderUid, 'pay_request', workId, w.site);
+  showToast('팀장에게 정산 요청을 보냈어요');
 }
 
 // ── 커스텀 날짜 선택 ──
@@ -1953,10 +2032,42 @@ function moveWork(d) {
   workM+=d; if(workM>11){workM=0;workY++;} if(workM<0){workM=11;workY--;} renderWork();
 }
 
+function toggleWorkSearch() {
+  const bar = document.getElementById('workSearchBar');
+  const isOpen = bar.style.display !== 'none';
+  bar.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) { document.getElementById('workSearchInput').focus(); }
+  else { workSearch = ''; document.getElementById('workSearchInput').value = ''; renderWork(); }
+}
+function onWorkSearch() {
+  workSearch = document.getElementById('workSearchInput').value.trim().toLowerCase();
+  renderWork();
+}
+function toggleShowCompleted() {
+  showCompleted = !showCompleted;
+  const btn = document.getElementById('completedToggleBtn');
+  if(btn) { btn.style.color = showCompleted ? 'var(--pri)' : 'var(--muted)'; btn.style.borderColor = showCompleted ? 'var(--pri)' : 'var(--border)'; }
+  renderWork();
+}
+
 function renderWork() {
   renderNotifBanner();
   document.getElementById('workLbl').textContent=`${workY}년 ${workM+1}월`;
-  const filtered=DB.works.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}));
+
+  // 검색 모드: 전체 기간에서 현장명 검색
+  let base;
+  if (workSearch) {
+    base = DB.works.filter(w => (w.site||'').toLowerCase().includes(workSearch));
+  } else {
+    base = DB.works.filter(w => (w.dates||[]).some(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}));
+  }
+
+  // 완료 현장 필터
+  const hasCompleted = DB.works.some(w => w.completed);
+  const completedToggleBtn = document.getElementById('completedToggleBtn');
+  if (completedToggleBtn) completedToggleBtn.style.display = hasCompleted ? 'inline-block' : 'none';
+  const filtered = showCompleted ? base : base.filter(w => !w.completed);
+
   const totalDays=new Set(filtered.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
   const totalWage=filtered.reduce((s,w)=>{
     if(w.wage==null) return s;
@@ -1965,12 +2076,16 @@ function renderWork() {
   },0);
   const isCurMonth=workY===TODAY.getFullYear()&&workM===TODAY.getMonth();
   const monthLbl=isCurMonth?'이번 달':`${workY}년 ${workM+1}월`;
-  document.getElementById('workSecTitle').textContent=filtered.length>0?`${filtered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}`:monthLbl+' 작업 기록';
+  const secTitle = workSearch
+    ? `"${workSearch}" 검색 결과 ${filtered.length}건`
+    : filtered.length>0?`${filtered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}`:monthLbl+' 작업 기록';
+  document.getElementById('workSecTitle').textContent = secTitle;
   const el=document.getElementById('wList');
   if(filtered.length===0){
     const isAll = DB.works.length===0;
     const ctaBtn = isAll ? `<button onclick="openWorkOv(null,todayStr())" style="margin-top:20px;padding:12px 28px;background:var(--pri);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">첫 현장 추가하기</button>` : '';
-    el.innerHTML=`<div class="es"><div class="es-icon">${isAll?'🏗️':'📋'}</div><div class="es-title">${isAll?'아직 작업 기록이 없어요':monthLbl+' 작업 기록이 없어요'}</div><div class="es-desc">${isAll?'현장명, 날짜, 일당을<br>기록해보세요':'이 달엔 작업 기록이 없어요'}</div>${ctaBtn}</div>`;
+    const emptyMsg = workSearch ? `"${workSearch}" 현장을 찾을 수 없어요` : isAll ? '아직 작업 기록이 없어요' : monthLbl+' 작업 기록이 없어요';
+    el.innerHTML=`<div class="es"><div class="es-icon">${isAll&&!workSearch?'🏗️':'📋'}</div><div class="es-title">${emptyMsg}</div><div class="es-desc">${isAll&&!workSearch?'현장명, 날짜, 일당을<br>기록해보세요':''}</div>${!workSearch?ctaBtn:''}</div>`;
     return;
   }
   // 같은 현장(jobId)에 묶인 여러 명의 근무기록을 한 카드로 그룹핑 (팀 모드에서 의미 있음)
@@ -2095,7 +2210,7 @@ function renderPay() {
             ${diffHtml}
           </div>
         </div>
-        <div class="pi-bottom">${badge}<div class="pi-arrow">상세 보기 ›</div></div>
+        <div class="pi-bottom">${badge}${!w.isPaid&&dataMode==='team'&&teamRole!=='leader'&&!w.isPersonal?`<button onclick="event.stopPropagation();requestPay('${w.id}')" style="font-size:11px;font-weight:700;background:none;border:1.5px solid var(--border);border-radius:20px;padding:3px 10px;cursor:pointer;color:var(--muted)">정산 요청</button>`:''}<div class="pi-arrow">상세 보기 ›</div></div>
       </div>`;
   }).join('');
 }
