@@ -2182,12 +2182,12 @@ function renderWorkRow(w,y,m,standalone) {
   const total=wageVisible?mDates.length*Number(w.wage)*u:null;
   const calc=wageVisible?(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})():'';
   const c=getColor(w.color||'orange');
-  const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="delWork('${w.id}')">🗑</button>`:'';
+  const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="event.stopPropagation();delWork('${w.id}')">🗑</button>`:'';
   const titleHtml=standalone
     ?`<div class="wi-site">${w.site}${workTypeBadge(w)}</div>`
     :(dataMode==='team'?`<div class="wi-who">${workTypeBadge(w)}</div>`:'');
   return `
-    <div class="witem"${standalone?` style="border-left:4px solid ${c.border}"`:''}>
+    <div class="witem" onclick="openWorkOv('${w.id}',null)"${standalone?` style="border-left:4px solid ${c.border}"`:''}>
       <div class="wi-main">
         ${titleHtml}
         <div class="wi-dates">${formatDatesShort(mDates)}</div>
