@@ -362,8 +362,8 @@ async function loadTeamData() {
   // notifications는 복합 인덱스가 필요해 별도 try-catch로 분리 (인덱스 빌드 중일 때 실패해도 나머지 데이터 유지)
   let notifSnap = { docs: [] };
   try {
-    notifSnap = await t.collection('notifications').where('toUid', '==', myUid).where('isRead', '==', false).get();
-  } catch(e) { console.warn('알림 로드 실패 (인덱스 빌드 중일 수 있음):', e.message); }
+    notifSnap = await t.collection('notifications').where('toUid', '==', myUid).get();
+  } catch(e) { console.warn('알림 로드 실패:', e.message); }
   const jobById = {};
   DB.jobs = allJobDocs.map(d => {
     const j = { id: d.id, ...d.data() };
@@ -385,7 +385,7 @@ async function loadTeamData() {
     const p = d.data();
     return { id: d.id, date: p.date, amount: p.amount, note: p.note, createdBy: p.createdBy, workId: p.wageId };
   });
-  DB.notifications = notifSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  DB.notifications = notifSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(n => !n.isRead);
   teamMembers = membersSnap.docs.map(d => d.data()).sort((a, b) => (a.role === 'leader' ? -1 : b.role === 'leader' ? 1 : 0));
   teamMemberExits = [];
   if (isLeader) {
@@ -913,10 +913,9 @@ function startNotifListener(teamId) {
     _notifListener = fsdb.collection('teams').doc(teamId)
       .collection('notifications')
       .where('toUid', '==', currentUser.uid)
-      .where('isRead', '==', false)
       .onSnapshot(snap => {
         if (dataMode !== 'team') return;
-        DB.notifications = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        DB.notifications = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(n => !n.isRead);
         updateNotifBadge();
         renderNotifBanner();
       }, e => console.warn('알림 실시간 수신 오류:', e.message));
