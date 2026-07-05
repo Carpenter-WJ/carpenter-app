@@ -2173,7 +2173,7 @@ function renderWorkRow(w,y,m,standalone) {
 function renderPay() {
   document.getElementById('payLbl').textContent=`${payY}년 ${payM+1}월`;
 
-  const monthWorks=DB.works.filter(w=>w.wage!=null&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
+  const monthWorks=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
   const mWage=monthWorks.reduce((s,w)=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}).length;
     return s+cnt*Number(w.wage)*Number(w.unit||1);
@@ -2381,8 +2381,8 @@ function renderMemberStats() {
   const summaryHtml = `<div class="card" style="margin-bottom:12px;padding:14px 16px">
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600">팀 전체 누적</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div><div style="font-size:11px;color:var(--muted)">총 임금</div><div style="font-size:17px;font-weight:700">${fmtW(totalWage)}</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">전체 미수금</div><div style="font-size:17px;font-weight:700;color:${totalUnpaid>0?'var(--red)':'var(--green)'}">${fmtW(totalUnpaid)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">총 인건비</div><div style="font-size:17px;font-weight:700">${fmtW(totalWage)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">전체 미지급금</div><div style="font-size:17px;font-weight:700;color:${totalUnpaid>0?'var(--red)':'var(--green)'}">${fmtW(totalUnpaid)}</div></div>
     </div>
   </div>`;
 
@@ -2440,7 +2440,7 @@ function renderMemberStats() {
         </div>`;
       }).join('');
       const unpaidColor = unpaid > 0 ? 'var(--red)' : 'var(--green)';
-      const unpaidLbl = unpaid > 0 ? `미수금 ${fmtW(unpaid)}` : '완납';
+      const unpaidLbl = unpaid > 0 ? `미지급금 ${fmtW(unpaid)}` : '완납';
       return `${header}${rows}
         <div style="display:flex;justify-content:space-between;padding:7px 0 2px;font-size:13px">
           <span style="color:var(--muted)">합계 ${fmtW(total)}</span>
@@ -2465,7 +2465,7 @@ function renderIncomeChart() {
   for(let i=5;i>=0;i--){
     let y=statY, m=statM-i;
     if(m<0){m+=12;y--;}
-    const wage=DB.works.filter(w=>w.wage!=null&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
+    const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
       .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
     months.push({y,m,wage,lbl:`${m+1}월`});
   }
@@ -2689,7 +2689,7 @@ function renderStat() {
   renderMemberStats();
   // 팀 모드에서 일반 팀원은 일당을 볼 수 있는(=본인이 등록한) 현장만 통계에 포함
   const statBase=(dataMode==='team'&&teamRole!=='leader')?DB.works.filter(w=>w.wage!=null):DB.works;
-  const works=statBase.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
+  const works=statBase.filter(w=>getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
   let mWage=0, mWageBase=0, sUnit=0;
   works.forEach(w=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
@@ -2701,7 +2701,7 @@ function renderStat() {
   const workDays=new Set(works.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
   const mOutstanding=works.reduce((s,w)=>w.wage==null||w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
-  const allOutstanding=statBase.reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+  const allOutstanding=statBase.filter(w=>getWorkStatus(w)!=='planned').reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
   const avgWage=workDays>0?Math.round(mWageBase/workDays):0;
   const sUnitStr=sUnit%1===0?sUnit:sUnit.toFixed(1);
 
