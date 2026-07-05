@@ -1625,7 +1625,7 @@ function markNotifRead(notifId) {
   renderNotifBanner();
 }
 
-function createNotification(toUid, type, wageId, site) {
+async function createNotification(toUid, type, wageId, site) {
   const msgs = {
     wage_modified: `팀장이 "${site}" 일당을 수정했어요`,
     wage_added: `팀장이 "${site}" 작업을 등록해줬어요`,
@@ -1633,21 +1633,26 @@ function createNotification(toUid, type, wageId, site) {
     pay_request: `"${site}" 정산을 요청했어요`,
   };
   const msg = msgs[type] || `팀장이 "${site}" 작업을 등록해줬어요`;
-  teamRef().collection('notifications').add({
+  await teamRef().collection('notifications').add({
     toUid, fromUid:currentUser.uid, type, wageId, site, message:msg,
     isRead:false, createdAt:firebase.firestore.FieldValue.serverTimestamp()
-  }).catch(e=>console.error('알림 저장 오류:',e));
+  });
 }
 
-function requestPay(workId) {
+async function requestPay(workId) {
   const w = DB.works.find(x => x.id === workId);
-  if(!w || !teamInfo?.leaderUid) return;
+  if(!w || !teamInfo?.leaderUid) { showToast('팀 정보를 불러올 수 없어요. 새로고침 후 다시 시도해주세요.'); return; }
   const sentKey = 'sentPayReq_' + activeTeamId;
   const sent = JSON.parse(localStorage.getItem(sentKey) || '[]');
   if(sent.includes(workId)) { showToast('이미 정산 요청을 보낸 현장이에요'); return; }
-  createNotification(teamInfo.leaderUid, 'pay_request', workId, w.site);
-  localStorage.setItem(sentKey, JSON.stringify([...sent, workId]));
-  showToast('팀장에게 정산 요청을 보냈어요');
+  try {
+    await createNotification(teamInfo.leaderUid, 'pay_request', workId, w.site);
+    localStorage.setItem(sentKey, JSON.stringify([...sent, workId]));
+    showToast('팀장에게 정산 요청을 보냈어요');
+  } catch(e) {
+    console.error('정산 요청 오류:', e);
+    showToast('정산 요청 전송에 실패했어요. 잠시 후 다시 시도해주세요.');
+  }
 }
 
 function updateBulkBar() {

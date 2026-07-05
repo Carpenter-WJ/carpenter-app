@@ -121,14 +121,16 @@ service cloud.firestore {
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
       }
 
-      // notifications = 팀장이 팀원 일당 등록/수정 시 생성하는 인앱 알림.
+      // notifications = 팀 내 인앱 알림 (팀장↔팀원 양방향).
       match /notifications/{notifId} {
         // 팀원은 본인 앞으로 온 알림만 읽음. 팀장은 전체 조회 가능(발송 확인용).
         allow read: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.toUid == request.auth.uid);
-        // 알림 생성은 팀장만.
-        allow create: if isTeamLeader(teamId, request.auth.uid)
-          && request.resource.data.fromUid == request.auth.uid;
+        // 팀장 → 팀원, 팀원 → 팀장(정산 요청 등) 양방향 허용.
+        allow create: if isTeamMember(teamId, request.auth.uid)
+          && request.resource.data.fromUid == request.auth.uid
+          && (isTeamLeader(teamId, request.auth.uid)
+              || request.resource.data.toUid == get(/databases/$(database)/documents/teams/$(teamId)).data.leaderUid);
         // 팀원은 본인 알림 isRead 업데이트만 허용, 팀장은 모두.
         allow update: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid)
