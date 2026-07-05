@@ -1353,6 +1353,13 @@ function renderCal() {
       html+='</div>';
     }
 
+    // 주간 수입 합계 (예정 현장 제외)
+    const wkWage=DB.works.filter(w=>getWorkStatus(w)==='active'&&w.wage!=null).reduce((s,w)=>{
+      const cnt=(w.dates||[]).filter(d=>wk.some(cell=>cell.ds&&cell.ds===d)).length;
+      return s+cnt*Number(w.wage)*Number(w.unit||1);
+    },0);
+    if(wkWage>0) html+=`<div class="cal-wsum">${(wkWage/10000).toFixed(0)}만원</div>`;
+
     html+='</div>';
   }
 
@@ -1667,6 +1674,27 @@ function requestPay(workId) {
   if(!w || !teamInfo?.leaderUid) return;
   createNotification(teamInfo.leaderUid, 'pay_request', workId, w.site);
   showToast('팀장에게 정산 요청을 보냈어요');
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  if (!bar) return;
+  const cnt = document.querySelectorAll('.bulk-check:checked').length;
+  bar.classList.toggle('on', cnt > 0);
+  const countEl = document.getElementById('bulkBarCount');
+  if (countEl) countEl.textContent = `${cnt}건 선택됨`;
+}
+
+async function bulkSetPaid() {
+  const checked = [...document.querySelectorAll('.bulk-check:checked')].map(el => el.dataset.wid);
+  if (!checked.length) return;
+  if (!confirm(`선택한 ${checked.length}개 현장을 지급 완료 처리할까요?`)) return;
+  const targets = DB.works.filter(w => checked.includes(w.id));
+  targets.forEach(w => w.isPaid = true);
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  await Promise.all(targets.map(w => updateOneWage(w)));
+  showToast(`${checked.length}개 현장 지급 완료 처리됐어요`);
+  renderPay();
 }
 
 // ── 커스텀 날짜 선택 ──
@@ -2206,6 +2234,7 @@ function renderPay() {
     return;
   }
 
+  updateBulkBar();
   el.innerHTML=filtered.map(w=>{
     const exp=expAmt(w), rcv=rcvAmt(w.id), diff=rcv-exp;
     const c=getColor(w.color||'orange');
@@ -2215,21 +2244,40 @@ function renderPay() {
         ?`<span class="wi-badge badge-partial" style="font-size:11px">${isPayOut(w)?'부분지급':'부분정산'}</span>`
         :`<span class="wi-badge badge-unpaid" style="font-size:11px">${isPayOut(w)?'미지급':'미정산'}</span>`);
     const diffHtml=diff===0?'':`<div class="pi-diff ${diff<0?'minus':'plus'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))} ${diff<0?(isPayOut(w)?'덜 줌':'덜 받음'):(isPayOut(w)?'더 줌':'더 받음')}</div>`;
-    return `
-      <div class="pitem" onclick="openPayDetail('${w.id}')" style="border-left:4px solid ${c.border}">
-        <div class="pi-top">
-          <div>
-            <div class="pi-site">${w.site}${workTypeBadge(w)}</div>
-            <div class="pi-meta">${formatDatesShort(w.dates)}</div>
-          </div>
-          <div class="pi-right">
-            <div class="pi-exp">${isPayOut(w)?'지급 예정':'예상'} ${fmtW(exp)}</div>
-            <div class="pi-rcv">${fmtW(rcv)}</div>
-            ${diffHtml}
-          </div>
+    // 미수금 aging 뱃지 — 마지막 작업일 기준 경과 일수
+    const lastWkDate=(w.dates||[]).slice().sort().slice(-1)[0]||'';
+    const agingDays=lastWkDate?Math.floor((Date.now()-new Date(lastWkDate+'T00:00:00').getTime())/86400000):0;
+    const agingBadge=!w.isPaid&&agingDays>=60
+      ?`<span class="wi-badge" style="background:rgba(255,59,48,.1);color:var(--red);font-size:10px">⚠️ ${agingDays}일 경과</span>`
+      :!w.isPaid&&agingDays>=30
+      ?`<span class="wi-badge" style="background:rgba(255,149,0,.1);color:#FF9500;font-size:10px">⚠️ 30일 초과</span>`
+      :'';
+    const requestPayBtn=!w.isPaid&&dataMode==='team'&&teamRole!=='leader'&&!w.isPersonal
+      ?`<button onclick="event.stopPropagation();requestPay('${w.id}')" style="font-size:11px;font-weight:700;background:none;border:1.5px solid var(--border);border-radius:20px;padding:3px 10px;cursor:pointer;color:var(--muted)">정산 요청</button>`:'';
+    const canBulk=isLeaderPay&&!w.isPaid;
+    const contentHtml=`
+      <div class="pi-top">
+        <div style="min-width:0;flex:1">
+          <div class="pi-site">${w.site}${workTypeBadge(w)}</div>
+          <div class="pi-meta">${formatDatesShort(w.dates)}</div>
         </div>
-        <div class="pi-bottom">${badge}${!w.isPaid&&dataMode==='team'&&teamRole!=='leader'&&!w.isPersonal?`<button onclick="event.stopPropagation();requestPay('${w.id}')" style="font-size:11px;font-weight:700;background:none;border:1.5px solid var(--border);border-radius:20px;padding:3px 10px;cursor:pointer;color:var(--muted)">정산 요청</button>`:''}<div class="pi-arrow">상세 보기 ›</div></div>
-      </div>`;
+        <div class="pi-right">
+          <div class="pi-exp">${isPayOut(w)?'지급 예정':'예상'} ${fmtW(exp)}</div>
+          <div class="pi-rcv">${fmtW(rcv)}</div>
+          ${diffHtml}
+        </div>
+      </div>
+      <div class="pi-bottom">${badge}${agingBadge}${requestPayBtn}<div class="pi-arrow">상세 보기 ›</div></div>`;
+    if(canBulk){
+      return `
+        <div class="pitem" style="border-left:4px solid ${c.border};display:flex;align-items:stretch;padding:0">
+          <div onclick="event.stopPropagation()" style="display:flex;align-items:center;padding:0 10px 0 14px;flex-shrink:0">
+            <input type="checkbox" class="bulk-check" data-wid="${w.id}" onchange="updateBulkBar()" style="width:18px;height:18px;accent-color:var(--pri);cursor:pointer">
+          </div>
+          <div style="flex:1;padding:14px 16px 14px 0;min-width:0" onclick="openPayDetail('${w.id}')">${contentHtml}</div>
+        </div>`;
+    }
+    return `<div class="pitem" onclick="openPayDetail('${w.id}')" style="border-left:4px solid ${c.border}">${contentHtml}</div>`;
   }).join('');
 }
 

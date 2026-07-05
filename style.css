@@ -94,6 +94,7 @@
       padding:3px 2px; cursor:pointer; overflow:hidden;
     }
     .ccell:nth-child(7n) { border-right:none; }
+    .cal-wsum { position:absolute; bottom:4px; right:5px; font-size:9px; font-weight:700; color:var(--pri); pointer-events:none; z-index:3; background:var(--card); padding:1px 4px; border-radius:3px; opacity:.85; }
     .ccell.other { background:var(--bg-sub); }
     .ccell.other .dnum { color:var(--border); }
     .ccell:active { background:var(--chip-bg); }
@@ -208,6 +209,12 @@
     .pi-diff.plus { color:var(--green); }
     .pi-bottom { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
     .pi-arrow { font-size:12px; color:var(--muted); }
+
+    /* 일괄 처리 바 */
+    .bulk-bar { position:fixed; bottom:calc(60px + env(safe-area-inset-bottom)); left:0; right:0; background:var(--pri); color:#fff; display:none; z-index:150; padding:0 16px; height:48px; align-items:center; justify-content:space-between; gap:12px; }
+    .bulk-bar.on { display:flex; }
+    .bulk-bar-count { font-size:14px; font-weight:600; }
+    .bulk-bar-btn { background:rgba(255,255,255,.22); border:none; color:#fff; font-size:13px; font-weight:700; padding:7px 18px; border-radius:20px; cursor:pointer; white-space:nowrap; }
 
     /* FAB */
     .fab {
