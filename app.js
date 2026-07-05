@@ -976,6 +976,8 @@ async function renameTeam() {
     teamInfo.name = trimmed;
     updateHeader();
     renderTeamSettings();
+    const titleEl = document.getElementById('teamMembersTitle');
+    if (titleEl) titleEl.textContent = trimmed;
     showToast('팀 이름이 변경되었습니다.');
   } catch(e) { console.error(e); alert('팀 이름 변경에 실패했습니다.'); }
 }
@@ -1054,6 +1056,12 @@ function openTeamMembersOv() {
 }
 
 function renderMemberList() {
+  const titleEl = document.getElementById('teamMembersTitle');
+  const subtitleEl = document.getElementById('teamMembersSubtitle');
+  const renameBtn = document.getElementById('teamRenameBtn');
+  if (titleEl && teamInfo) titleEl.textContent = teamInfo.name || '팀원 목록';
+  if (subtitleEl) subtitleEl.textContent = `팀원 ${teamMembers.length}명`;
+  if (renameBtn) renameBtn.style.display = teamRole === 'leader' ? '' : 'none';
   const wrap = document.getElementById('teamMemberList');
   wrap.innerHTML = teamMembers.map(m => `
     <div class="set-item">
@@ -1161,7 +1169,7 @@ function renderTeamSettings() {
     <div class="set-item" style="cursor:pointer" onclick="openTeamMembersOv()">
       <div class="set-icon" style="background:rgba(0,122,255,.12)">👥</div>
       <div class="set-text">
-        <div class="set-item-lbl">${teamInfo.name}${teamRole === 'leader' ? `<button onclick="event.stopPropagation();renameTeam()" style="background:none;border:none;cursor:pointer;padding:0 0 0 6px;font-size:13px;opacity:.55;vertical-align:middle">✏️</button>` : ''}</div>
+        <div class="set-item-lbl">${teamInfo.name}</div>
         <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${teamInfo.maxMembers}명</div>
       </div>
       <span style="color:var(--muted);font-size:18px">›</span>

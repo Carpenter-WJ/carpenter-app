@@ -540,8 +540,14 @@
   <div class="sheet">
     <div class="sh-handle"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-      <div class="sh-title" style="margin-bottom:0">팀원 목록</div>
-      <button onclick="closeOv('teamMembersOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+      <div style="min-width:0;flex:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="sh-title" style="margin-bottom:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="teamMembersTitle">팀원 목록</div>
+          <button id="teamRenameBtn" onclick="renameTeam()" style="display:none;flex-shrink:0;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:12px;color:var(--muted);cursor:pointer">수정</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px" id="teamMembersSubtitle"></div>
+      </div>
+      <button onclick="closeOv('teamMembersOv')" style="flex-shrink:0;background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);margin-left:8px">✕</button>
     </div>
     <div id="teamMemberList"></div>
   </div>
