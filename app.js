@@ -964,22 +964,36 @@ async function rotateInviteCode() {
   } catch (e) { console.error(e); alert('코드 재발급에 실패했습니다.'); }
 }
 
-async function renameTeam() {
+function renameTeam() {
   if (teamRole !== 'leader') return;
-  const newName = prompt('새 팀 이름을 입력하세요', teamInfo.name || '');
-  if (newName === null) return;
-  const trimmed = newName.trim();
-  if (!trimmed) { alert('팀 이름을 입력해주세요.'); return; }
-  if (trimmed === teamInfo.name) return;
+  const inp = document.getElementById('inTeamRename');
+  if (inp) inp.value = teamInfo.name || '';
+  openOv('teamRenameOv');
+  setTimeout(() => inp && inp.focus(), 300);
+}
+
+async function confirmRenameTeam() {
+  const inp = document.getElementById('inTeamRename');
+  const trimmed = (inp?.value || '').trim();
+  if (!trimmed) { showToast('팀 이름을 입력해주세요.'); return; }
+  if (trimmed === teamInfo.name) { closeOv('teamRenameOv'); return; }
+  const btn = document.getElementById('teamRenameConfirmBtn');
+  if (btn) btn.disabled = true;
   try {
     await teamRef().update({ name: trimmed });
     teamInfo.name = trimmed;
+    closeOv('teamRenameOv');
     updateHeader();
     renderTeamSettings();
     const titleEl = document.getElementById('teamMembersTitle');
     if (titleEl) titleEl.textContent = trimmed;
     showToast('팀 이름이 변경되었습니다.');
-  } catch(e) { console.error(e); alert('팀 이름 변경에 실패했습니다.'); }
+  } catch(e) {
+    console.error(e);
+    showToast('팀 이름 변경에 실패했습니다.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function deleteTeam() {
@@ -1420,6 +1434,8 @@ function renderCal() {
   document.getElementById('calGrid').innerHTML=html;
   const calHint=document.getElementById('calHint');
   if(calHint) calHint.style.display=DB.works.length===0?'':'none';
+  const calLegend=document.getElementById('calLegend');
+  if(calLegend) calLegend.style.display=(dataMode==='team'&&teamRole==='leader'&&DB.works.length>0)?'flex':'none';
 }
 
 // ── 날짜 모달 ──
@@ -1671,7 +1687,7 @@ function renderNotifPanel() {
           <div class="notif-item-time">${relTime(n.createdAt)}</div>
           ${actionHtml}
         </div>
-        ${unread?`<button onclick="markNotifRead('${n.id}')" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 0 0 8px;flex-shrink:0;align-self:center">✕</button>`:''}
+        ${unread?`<button onclick="markNotifRead('${n.id}')" style="background:none;border:1px solid var(--border);border-radius:12px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;padding:3px 9px;flex-shrink:0;align-self:center;white-space:nowrap">읽음</button>`:''}
       </div>`;
   }).join('');
 }
@@ -2321,8 +2337,14 @@ function renderPay() {
       :!w.isPaid&&agingDays>=30
       ?`<span class="wi-badge" style="background:rgba(255,149,0,.1);color:#FF9500;font-size:10px">⚠️ 30일 초과</span>`
       :'';
+    const _sentPayKey = 'sentPayReq_' + activeTeamId;
+    const _sentPays = JSON.parse(localStorage.getItem(_sentPayKey) || '[]');
+    const _alreadySent = _sentPays.includes(w.id);
     const requestPayBtn=!w.isPaid&&w.wage!=null&&dataMode==='team'&&teamRole!=='leader'&&!w.isPersonal
-      ?`<button onclick="event.stopPropagation();requestPay('${w.id}')" style="font-size:11px;font-weight:700;background:none;border:1.5px solid var(--border);border-radius:20px;padding:3px 10px;cursor:pointer;color:var(--muted)">정산 요청</button>`:'';
+      ?(_alreadySent
+        ?`<button disabled style="font-size:11px;font-weight:700;background:rgba(52,199,89,.1);border:1.5px solid rgba(52,199,89,.4);border-radius:20px;padding:3px 10px;cursor:default;color:#34C759">요청 완료 ✓</button>`
+        :`<button onclick="event.stopPropagation();requestPay('${w.id}')" style="font-size:11px;font-weight:700;background:none;border:1.5px solid var(--border);border-radius:20px;padding:3px 10px;cursor:pointer;color:var(--muted)">정산 요청</button>`)
+      :'';
     const canBulk=isLeaderPay&&!w.isPaid;
     const contentHtml=`
       <div class="pi-top">
