@@ -964,6 +964,22 @@ async function rotateInviteCode() {
   } catch (e) { console.error(e); alert('코드 재발급에 실패했습니다.'); }
 }
 
+async function renameTeam() {
+  if (teamRole !== 'leader') return;
+  const newName = prompt('새 팀 이름을 입력하세요', teamInfo.name || '');
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) { alert('팀 이름을 입력해주세요.'); return; }
+  if (trimmed === teamInfo.name) return;
+  try {
+    await teamRef().update({ name: trimmed });
+    teamInfo.name = trimmed;
+    updateHeader();
+    renderTeamSettings();
+    showToast('팀 이름이 변경되었습니다.');
+  } catch(e) { console.error(e); alert('팀 이름 변경에 실패했습니다.'); }
+}
+
 async function deleteTeam() {
   if (teamRole !== 'leader') return;
   if (!confirm('팀을 해체하면 팀이 닫히고,\n기록은 각자 개인으로 이관됩니다.\n계속할까요?')) return;
@@ -1145,7 +1161,7 @@ function renderTeamSettings() {
     <div class="set-item" style="cursor:pointer" onclick="openTeamMembersOv()">
       <div class="set-icon" style="background:rgba(0,122,255,.12)">👥</div>
       <div class="set-text">
-        <div class="set-item-lbl">${teamInfo.name}</div>
+        <div class="set-item-lbl">${teamInfo.name}${teamRole === 'leader' ? `<button onclick="event.stopPropagation();renameTeam()" style="background:none;border:none;cursor:pointer;padding:0 0 0 6px;font-size:13px;opacity:.55;vertical-align:middle">✏️</button>` : ''}</div>
         <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${teamInfo.maxMembers}명</div>
       </div>
       <span style="color:var(--muted);font-size:18px">›</span>
