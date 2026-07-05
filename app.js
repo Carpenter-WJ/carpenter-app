@@ -2230,7 +2230,7 @@ function renderPay() {
       :!w.isPaid&&agingDays>=30
       ?`<span class="wi-badge" style="background:rgba(255,149,0,.1);color:#FF9500;font-size:10px">⚠️ 30일 초과</span>`
       :'';
-    const requestPayBtn=!w.isPaid&&dataMode==='team'&&teamRole!=='leader'&&!w.isPersonal
+    const requestPayBtn=!w.isPaid&&w.wage!=null&&dataMode==='team'&&teamRole!=='leader'&&!w.isPersonal
       ?`<button onclick="event.stopPropagation();requestPay('${w.id}')" style="font-size:11px;font-weight:700;background:none;border:1.5px solid var(--border);border-radius:20px;padding:3px 10px;cursor:pointer;color:var(--muted)">정산 요청</button>`:'';
     const canBulk=isLeaderPay&&!w.isPaid;
     const contentHtml=`
