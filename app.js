@@ -1629,6 +1629,7 @@ function createNotification(toUid, type, wageId, site) {
   const msgs = {
     wage_modified: `팀장이 "${site}" 일당을 수정했어요`,
     wage_added: `팀장이 "${site}" 작업을 등록해줬어요`,
+    work_deleted: `팀장이 "${site}" 작업 기록을 삭제했어요`,
     pay_request: `"${site}" 정산을 요청했어요`,
   };
   const msg = msgs[type] || `팀장이 "${site}" 작업을 등록해줬어요`;
@@ -2034,6 +2035,9 @@ async function delWork(id) {
           batch.delete(t.collection('wages').doc(id));
           DB.payments.filter(p=>p.workId===id).forEach(p=>batch.delete(t.collection('payments').doc(p.id)));
           await batch.commit();
+          if (work && work.ownerUid && work.ownerUid !== currentUser.uid) {
+            createNotification(work.ownerUid, 'work_deleted', id, work.site);
+          }
         }
       } else {
         const ref = fsdb.collection('users').doc(currentUser.uid);
