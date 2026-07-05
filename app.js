@@ -422,6 +422,14 @@ function isPayOut(w) {
   return dataMode === 'team' && teamRole === 'leader' && !w.isPersonal;
 }
 
+// 현장 상태: 완료 > 예정(전체 날짜가 미래) > 진행 중
+function getWorkStatus(w) {
+  if (w.completed) return 'completed';
+  const today = todayStr();
+  if ((w.dates||[]).length > 0 && (w.dates||[]).every(d => d > today)) return 'planned';
+  return 'active';
+}
+
 // 기록/정산/통계 탭 공통 뱃지 — 팀 모드에서만 표시
 function workTypeBadge(w) {
   if (dataMode !== 'team') return '';
@@ -1246,17 +1254,18 @@ function moveM(d) {
 function renderCal() {
   document.getElementById('calLbl').textContent=`${calY}년 ${calM+1}월`;
 
+  // 예정 현장 제외한 통계 계산
   const allDates=[];
-  DB.works.forEach(w=>(w.dates||[]).forEach(d=>{const p=parsD(d);if(p.y===calY&&p.m===calM)allDates.push(d);}));
+  DB.works.filter(w=>getWorkStatus(w)==='active').forEach(w=>(w.dates||[]).forEach(d=>{const p=parsD(d);if(p.y===calY&&p.m===calM)allDates.push(d);}));
   const workDays=new Set(allDates).size;
   let mWage=0, mUnit=0;
-  DB.works.forEach(w=>{
+  DB.works.filter(w=>getWorkStatus(w)==='active').forEach(w=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).length;
     const u=Number(w.unit||1);
     if(w.wage!=null) mWage+=cnt*Number(w.wage)*u;
     mUnit+=cnt*u;
   });
-  const monthWorks=DB.works.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}));
+  const monthWorks=DB.works.filter(w=>getWorkStatus(w)==='active'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}));
   const mUnpaid=monthWorks.filter(w=>w.wage!=null&&!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
   const mUnitStr=mUnit%1===0?mUnit:mUnit.toFixed(1);
 
@@ -1267,18 +1276,19 @@ function renderCal() {
     <div class="cs-item"><div class="cv">${(mUnpaid/10000).toFixed(0)}만원</div><div class="cl">미수금</div></div>
   `;
 
-  // 연속 날짜 구간별 바 계산
+  // 연속 날짜 구간별 바 계산 (예정/완료 포함, status 구분)
   const bars=[];
-  DB.works.forEach(w=>{
+  DB.works.filter(w=>!w.completed).forEach(w=>{
     const md=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).sort();
     if(!md.length) return;
+    const wStatus=getWorkStatus(w);
     let rs=md[0], re=md[0];
     for(let i=1;i<=md.length;i++){
       if(i<md.length){
         const a=new Date(re+'T00:00:00'), b=new Date(md[i]+'T00:00:00');
         if((b-a)/86400000===1){re=md[i];continue;}
       }
-      bars.push({site:w.site,color:w.color||'orange',startDs:rs,endDs:re});
+      bars.push({site:w.site,color:w.color||'orange',startDs:rs,endDs:re,status:wStatus});
       if(i<md.length){rs=md[i];re=md[i];}
     }
   });
@@ -1329,14 +1339,16 @@ function renderCal() {
         }
       });
       if(cs===-1) return;
-      wkBars.push({site:bar.site,color:bar.color,colStart:cs,colSpan:ce-cs+1,clickDs:wk[cs].ds});
+      wkBars.push({site:bar.site,color:bar.color,colStart:cs,colSpan:ce-cs+1,clickDs:wk[cs].ds,status:bar.status});
     });
 
     if(wkBars.length){
       html+='<div class="cal-events">';
       wkBars.forEach(bar=>{
         const c=getColor(bar.color);
-        html+=`<div class="cbar" style="grid-column:${bar.colStart+1}/span ${bar.colSpan};background:${c.bg};border-left-color:${c.border};color:${c.border}" onclick="openDayOv('${bar.clickDs}')">${bar.site}</div>`;
+        const isPlanned=bar.status==='planned';
+        const planStyle=isPlanned?`;opacity:0.6;border-left-style:dashed;background:transparent;border:1.5px dashed ${c.border};color:${c.border}`:'';
+        html+=`<div class="cbar" style="grid-column:${bar.colStart+1}/span ${bar.colSpan};background:${c.bg};border-left-color:${c.border};color:${c.border}${planStyle}" onclick="openDayOv('${bar.clickDs}')">${bar.site}${isPlanned?' 예정':''}</div>`;
       });
       html+='</div>';
     }
@@ -2068,17 +2080,21 @@ function renderWork() {
   if (completedToggleBtn) completedToggleBtn.style.display = hasCompleted ? 'inline-block' : 'none';
   const filtered = showCompleted ? base : base.filter(w => !w.completed);
 
-  const totalDays=new Set(filtered.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
-  const totalWage=filtered.reduce((s,w)=>{
+  // 통계에는 예정 현장 제외 (실제 작업일/일당만 집계)
+  const activeFiltered=filtered.filter(w=>getWorkStatus(w)==='active');
+  const totalDays=new Set(activeFiltered.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}))).size;
+  const totalWage=activeFiltered.reduce((s,w)=>{
     if(w.wage==null) return s;
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}).length;
     return s+cnt*Number(w.wage)*Number(w.unit||1);
   },0);
+  const plannedCount=filtered.filter(w=>getWorkStatus(w)==='planned').length;
   const isCurMonth=workY===TODAY.getFullYear()&&workM===TODAY.getMonth();
   const monthLbl=isCurMonth?'이번 달':`${workY}년 ${workM+1}월`;
+  const plannedSuffix=(!workSearch&&plannedCount>0)?` · 예정 ${plannedCount}건`:'';
   const secTitle = workSearch
     ? `"${workSearch}" 검색 결과 ${filtered.length}건`
-    : filtered.length>0?`${filtered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}`:monthLbl+' 작업 기록';
+    : filtered.length>0?`${activeFiltered.length}개 현장 · ${totalDays}일 · ${fmtW(totalWage)}${plannedSuffix}`:monthLbl+' 작업 기록';
   document.getElementById('workSecTitle').textContent = secTitle;
   const el=document.getElementById('wList');
   if(filtered.length===0){
@@ -2118,6 +2134,8 @@ function renderWork() {
 function renderWorkRow(w,y,m,standalone) {
   const wageVisible=w.wage!=null;
   const rcv=wageVisible?rcvAmt(w.id):0;
+  const wStatus=getWorkStatus(w);
+  const statusBadge=wStatus==='planned'?'<span class="wi-badge" style="background:rgba(0,122,255,.1);color:#007AFF">예정</span>':'';
   const badge=!wageVisible
     ?'<span class="wi-badge">비공개</span>'
     :w.isPaid
@@ -2141,7 +2159,7 @@ function renderWorkRow(w,y,m,standalone) {
         <div class="wi-dates">${formatDatesShort(mDates)}</div>
         ${w.workDesc?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${w.workDesc}</div>`:''}
         <div class="wi-wage">${wageVisible?`일당 ${fmtW(w.wage)}${u!==1?` · ${u}품`:''}`:'일당 비공개'}</div>
-        ${badge}
+        ${statusBadge}${badge}
       </div>
       <div class="wi-right">
         <div class="wi-total">${wageVisible?fmtW(total):'—'}</div>
