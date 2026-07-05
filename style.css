@@ -94,7 +94,9 @@
       padding:3px 2px; cursor:pointer; overflow:hidden;
     }
     .ccell:nth-child(7n) { border-right:none; }
-    .cal-wsum { position:absolute; bottom:4px; right:5px; font-size:9px; font-weight:700; color:var(--pri); pointer-events:none; z-index:3; background:var(--card); padding:1px 4px; border-radius:3px; opacity:.85; }
+    .cal-wsum { position:absolute; bottom:4px; right:5px; pointer-events:none; z-index:3; background:var(--card); padding:2px 5px; border-radius:4px; opacity:.9; display:flex; align-items:baseline; gap:2px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .cal-wsum-lbl { font-size:8px; font-weight:600; color:var(--muted); }
+    .cal-wsum-val { font-size:9px; font-weight:700; color:var(--pri); }
     .ccell.other { background:var(--bg-sub); }
     .ccell.other .dnum { color:var(--border); }
     .ccell:active { background:var(--chip-bg); }
@@ -443,6 +445,13 @@
     .set-item-lbl { font-size:15px; font-weight:500; color:var(--text); }
     .set-item-sub { font-size:12px; color:var(--muted); margin-top:2px; }
     .set-item-input { width:120px; text-align:right; border:none; background:none; font-size:15px; font-weight:600; color:var(--pri); outline:none; }
+    /* 설정 토글 스위치 */
+    .sw-wrap { position:relative; display:inline-block; width:44px; height:26px; flex-shrink:0; cursor:pointer; }
+    .sw-wrap input { opacity:0; width:0; height:0; position:absolute; }
+    .sw { position:absolute; inset:0; background:var(--border); border-radius:13px; transition:background .2s; }
+    .sw::before { content:''; position:absolute; width:22px; height:22px; left:2px; top:2px; background:#fff; border-radius:50%; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+    .sw-wrap input:checked + .sw { background:var(--pri); }
+    .sw-wrap input:checked + .sw::before { transform:translateX(18px); }
     .theme-seg { display:flex; background:var(--bg-sub); border-radius:10px; padding:3px; margin:4px 16px 14px; }
     .theme-seg button { flex:1; border:none; background:none; padding:8px 4px; font-size:13px; font-weight:600; color:var(--muted); cursor:pointer; border-radius:8px; transition:all .15s; }
     .theme-seg button.on { background:var(--card); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.15); }

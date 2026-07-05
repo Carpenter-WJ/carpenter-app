@@ -61,6 +61,7 @@ let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
 let workSearch = '', showCompleted = false;
+let showWeekSum = localStorage.getItem('showWeekSum') !== 'false';
 let curTab = 'cal';
 let selDate = null;
 let selWorkId = null;
@@ -158,6 +159,7 @@ let defaultWage = localStorage.getItem('defaultWage') || '';
 let userDisplayName = ''; // 사용자 설정 닉네임 (구글 이름과 별개)
 let workEntryMode = 'team'; // 팀 모드에서 기록 추가 시 'team' | 'personal'
 function saveDefWage(v) { defaultWage = v; localStorage.setItem('defaultWage', v); }
+function setWeekSum(v) { showWeekSum = v; localStorage.setItem('showWeekSum', v); renderCal(); }
 
 // ── 설정 탭 렌더 ──
 function renderSet() {
@@ -166,6 +168,8 @@ function renderSet() {
   else renderTeamSettings();
   const inp = document.getElementById('defWageInp');
   if(inp) inp.value = defaultWage;
+  const wst = document.getElementById('weekSumToggle');
+  if(wst) wst.checked = showWeekSum;
   const card = document.getElementById('accountCard');
   if(!card) return;
   if(currentUser) {
@@ -1353,12 +1357,14 @@ function renderCal() {
       html+='</div>';
     }
 
-    // 주간 수입 합계 (예정 현장 제외)
-    const wkWage=DB.works.filter(w=>getWorkStatus(w)==='active'&&w.wage!=null).reduce((s,w)=>{
-      const cnt=(w.dates||[]).filter(d=>wk.some(cell=>cell.ds&&cell.ds===d)).length;
-      return s+cnt*Number(w.wage)*Number(w.unit||1);
-    },0);
-    if(wkWage>0) html+=`<div class="cal-wsum">${(wkWage/10000).toFixed(0)}만원</div>`;
+    // 주간 수입 합계 (예정 현장 제외, 설정 켜진 경우만)
+    if(showWeekSum){
+      const wkWage=DB.works.filter(w=>getWorkStatus(w)==='active'&&w.wage!=null).reduce((s,w)=>{
+        const cnt=(w.dates||[]).filter(d=>wk.some(cell=>cell.ds&&cell.ds===d)).length;
+        return s+cnt*Number(w.wage)*Number(w.unit||1);
+      },0);
+      if(wkWage>0) html+=`<div class="cal-wsum"><span class="cal-wsum-lbl">주간</span><span class="cal-wsum-val">${(wkWage/10000).toFixed(0)}만원</span></div>`;
+    }
 
     html+='</div>';
   }
