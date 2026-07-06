@@ -138,7 +138,7 @@
 <!-- 통계 탭 -->
 <div class="page" id="page-stat">
   <div class="stat-nav">
-    <button onclick="moveStat(-1)">‹</button>
+    <button id="statPrevBtn" onclick="moveStat(-1)">‹</button>
     <span class="sm" id="statLbl"></span>
     <button onclick="moveStat(1)">›</button>
   </div>
@@ -474,6 +474,19 @@
 </div>
 
 <!-- 팀 이름 수정 모달 -->
+<div class="ov" id="premUpgradeOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="text-align:center;padding:4px 0 8px">
+      <div style="font-size:40px;margin-bottom:14px">🔒</div>
+      <div class="sh-title" style="margin-bottom:8px">전체 기간 통계</div>
+      <div style="font-size:14px;color:var(--muted);line-height:1.65;margin-bottom:24px">최근 3개월 이전 통계는<br>프리미엄 플랜에서 이용할 수 있어요<br><br>연간 수입 추이, 전년 대비 비교 등<br>더 상세한 통계를 곧 만나보세요</div>
+      <div style="background:var(--pri);color:#fff;border-radius:14px;padding:15px;font-size:15px;font-weight:700;opacity:0.45;margin-bottom:12px">준비 중이에요</div>
+      <button onclick="closeOv('premUpgradeOv')" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px;font-size:15px;font-weight:600;color:var(--muted);cursor:pointer">닫기</button>
+    </div>
+  </div>
+</div>
+
 <div class="ov" id="teamRenameOv">
   <div class="sheet">
     <div class="sh-handle"></div>

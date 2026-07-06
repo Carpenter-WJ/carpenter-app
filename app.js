@@ -59,6 +59,7 @@ let _notifListener = null;
 const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
+let isPremium = false; // 결제 연동 시 교체
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
 let workSearch = '';
@@ -2504,6 +2505,13 @@ async function delPay(id) {
 
 // ── 통계 ──
 function moveStat(d) {
+  if (d < 0 && !isPremium) {
+    let ny = statY, nm = statM - 1;
+    if (nm < 0) { nm = 11; ny--; }
+    let limM = TODAY.getMonth() - 2, limY = TODAY.getFullYear();
+    if (limM < 0) { limM += 12; limY--; }
+    if (ny < limY || (ny === limY && nm < limM)) { openOv('premUpgradeOv'); return; }
+  }
   statM+=d; if(statM>11){statM=0;statY++;} if(statM<0){statM=11;statY--;} renderStat();
 }
 
@@ -2832,6 +2840,13 @@ ${payments.length > 0 ? `
 
 function renderStat() {
   document.getElementById('statLbl').textContent=`${statY}년 ${statM+1}월`;
+  const prevBtn = document.getElementById('statPrevBtn');
+  if (prevBtn && !isPremium) {
+    let limM = TODAY.getMonth() - 2, limY = TODAY.getFullYear();
+    if (limM < 0) { limM += 12; limY--; }
+    const atLimit = statY < limY || (statY === limY && statM <= limM);
+    prevBtn.style.opacity = atLimit ? '0.25' : '1';
+  }
   renderIncomeChart();
   renderMemberStats();
   // 팀 모드에서 일반 팀원은 일당을 볼 수 있는(=본인이 등록한) 현장만 통계에 포함
