@@ -379,7 +379,9 @@ async function loadTeamData() {
       site: job.site || '(삭제된 현장)', address: job.address, contact: job.contact, phone: job.phone, memo: job.memo, color: job.color,
       jobCreatedBy: job.createdBy,
       dates: wg.dates, unit: wg.unit, wage: wg.wage, isPaid: wg.isPaid,
-      ownerUid: wg.ownerUid || wg.createdBy, createdBy: wg.createdBy
+      ownerUid: wg.ownerUid || (!wg.isGuest ? wg.createdBy : null),
+      guestName: wg.guestName || null, isGuest: wg.isGuest || false,
+      workDesc: wg.workDesc || '', createdBy: wg.createdBy
     };
   });
   DB.payments = paysSnap.docs.map(d => {
@@ -419,9 +421,14 @@ async function loadTeamData() {
 }
 
 function memberName(uid) {
+  if (!uid) return '수기 인력';
   if (currentUser && uid === currentUser.uid) return '나';
   const m = teamMembers.find(x => x.uid === uid);
-  return m ? (m.displayName || '이름 없음') : '팀원';
+  return m ? (m.customName || m.displayName || '이름 없음') : '팀원';
+}
+function workerLabel(w) {
+  if (w.isGuest) return w.guestName || '수기 인력';
+  return memberName(w.ownerUid || w.createdBy);
 }
 
 // 팀장이 팀원에게 지급해야 하는 기록 여부 (지급 관점 vs 수령 관점 분기 핵심)
@@ -443,8 +450,9 @@ function workTypeBadge(w) {
   if (w.isPersonal) {
     return `<span style="${base};background:rgba(52,199,89,.15);color:#34C759">개인</span>`;
   }
-  const name = memberName(w.ownerUid || w.createdBy);
-  return `<span style="${base};background:#e8f0fe;color:#3b5bdb">팀</span><span style="font-size:10px;font-weight:600;color:var(--muted);margin-left:4px;vertical-align:middle">${name}</span>`;
+  const name = workerLabel(w);
+  const badgeColor = w.isGuest ? 'background:rgba(255,149,0,.15);color:#FF9500' : 'background:#e8f0fe;color:#3b5bdb';
+  return `<span style="${base};${badgeColor}">팀</span><span style="font-size:10px;font-weight:600;color:var(--muted);margin-left:4px;vertical-align:middle">${name}</span>`;
 }
 
 async function loadData() {
@@ -1511,7 +1519,7 @@ function openDayOv(ds) {
   } else {
     document.getElementById('dayOvWorks').innerHTML=works.map(w=>`
       <div class="dm-work">
-        <div class="dm-site">${w.site}${dataMode==='team'&&!w.isPersonal?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${memberName(w.ownerUid||w.createdBy)}</span>`:''}</div>
+        <div class="dm-site">${w.site}${dataMode==='team'&&!w.isPersonal?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${workerLabel(w)}</span>`:''}</div>
         <div class="dm-wage">${w.wage!=null?fmtW(w.wage):'비공개'}</div>
         <button class="dm-edit" onclick="openWorkOv('${w.id}',null)">✏️</button>
       </div>
@@ -1609,19 +1617,46 @@ function openWorkOv(workId, prefillDate) {
   openOv('workOv');
 }
 
+let guestCounter = 0;
 function renderMemberWageList() {
   const unitOpts=[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(v=>`<option value="${v}"${v===1?' selected':''}>${v}품</option>`).join('');
-  document.getElementById('memberWageList').innerHTML=teamMembers.map(m=>`
+  guestCounter = 0;
+  let html = teamMembers.map(m=>`
     <div class="mw-row">
       <label class="mw-check-label">
         <input type="checkbox" class="mw-check" value="${m.uid}" checked>
-        <span class="mw-name">${m.uid===currentUser.uid?'나 (팀장)':(m.displayName||'팀원')}</span>
+        <span class="mw-name">${m.uid===currentUser.uid?'나 (팀장)':(m.customName||m.displayName||'팀원')}</span>
       </label>
       <input type="number" class="mw-wage" placeholder="일당" value="${defaultWage||''}" inputmode="numeric">
       <span style="font-size:11px;color:var(--muted)">원</span>
       <select class="mw-unit">${unitOpts}</select>
     </div>`).join('');
+  if (isPremium) {
+    html += `<button type="button" onclick="addGuestRow()" style="margin-top:10px;width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;font-weight:600">+ 수기 인력 추가</button>`;
+  } else {
+    html += `<div onclick="openOv('premUpgradeOv')" style="margin-top:10px;width:100%;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;text-align:center">🔒 수기 인력 추가 (프리미엄)</div>`;
+  }
+  document.getElementById('memberWageList').innerHTML = html;
 }
+function addGuestRow() {
+  const unitOpts=[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(v=>`<option value="${v}"${v===1?' selected':''}>${v}품</option>`).join('');
+  const row=document.createElement('div');
+  row.className='mw-row mw-guest-row';
+  row.innerHTML=`
+    <label class="mw-check-label" style="flex:1;min-width:0">
+      <input type="checkbox" class="mw-check" value="guest_${++guestCounter}" checked>
+      <input type="text" class="mw-guest-name" placeholder="이름 입력" maxlength="20"
+        style="border:none;border-bottom:1px solid var(--border);background:transparent;color:var(--fg);font-size:14px;font-weight:600;width:80px;outline:none">
+    </label>
+    <input type="number" class="mw-wage" placeholder="일당" value="${defaultWage||''}" inputmode="numeric">
+    <span style="font-size:11px;color:var(--muted)">원</span>
+    <select class="mw-unit">${unitOpts}</select>
+    <button type="button" onclick="removeGuestRow(this)"
+      style="background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;padding:0 2px;flex-shrink:0;line-height:1">×</button>`;
+  const addBtn=document.querySelector('#memberWageList > button[onclick="addGuestRow()"]');
+  if(addBtn) addBtn.before(row); else document.getElementById('memberWageList').appendChild(row);
+}
+function removeGuestRow(btn) { btn.closest('.mw-guest-row').remove(); }
 
 function setRecordType(type) {
   workEntryMode = type;
@@ -2001,9 +2036,16 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
     if(!check.checked) continue;
     const wage=Number(row.querySelector('.mw-wage').value);
     const unit=Number(row.querySelector('.mw-unit').value)||1;
-    const name=row.querySelector('.mw-name').textContent;
-    if(!wage){alert(`${name}의 일당을 입력해주세요.`);return;}
-    members.push({uid:check.value,wage,unit,name:name.trim()});
+    if(check.value.startsWith('guest_')){
+      const guestName=(row.querySelector('.mw-guest-name')?.value||'').trim();
+      if(!guestName){alert('수기 인력의 이름을 입력해주세요.');return;}
+      if(!wage){alert(`${guestName}의 일당을 입력해주세요.`);return;}
+      members.push({uid:null,guestName,wage,unit,name:guestName});
+    } else {
+      const name=row.querySelector('.mw-name').textContent;
+      if(!wage){alert(`${name}의 일당을 입력해주세요.`);return;}
+      members.push({uid:check.value,wage,unit,name:name.trim()});
+    }
   }
   if(members.length===0){alert('한 명 이상 선택해주세요.');return;}
 
@@ -2036,16 +2078,18 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
   members.forEach((m,i)=>{
     const wId=(now+i).toString(36);
     const sortedDates=editDates.sort();
-    batch.set(t.collection('wages').doc(wId),{
-      jobId,dates:sortedDates,unit:m.unit,wage:m.wage,isPaid:false,workDesc,
-      ownerUid:m.uid,createdBy:currentUser.uid,
+    const wageData={jobId,dates:sortedDates,unit:m.unit,wage:m.wage,isPaid:false,workDesc,
+      createdBy:currentUser.uid,
       createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+    if(m.uid) wageData.ownerUid=m.uid;
+    else { wageData.guestName=m.guestName; wageData.isGuest=true; }
+    batch.set(t.collection('wages').doc(wId),wageData);
     newWorks.push({id:wId,site,workDesc,wage:m.wage,unit:m.unit,dates:sortedDates,isPaid:false,
       color:editColor,address,contact,phone,memo,
-      createdBy:currentUser.uid,ownerUid:m.uid,jobId});
-    if(m.uid!==currentUser.uid) createNotification(m.uid,'wage_added',wId,site).catch(()=>{});
+      createdBy:currentUser.uid,ownerUid:m.uid||null,
+      guestName:m.guestName||null,isGuest:!m.uid,jobId});
+    if(m.uid&&m.uid!==currentUser.uid) createNotification(m.uid,'wage_added',wId,site).catch(()=>{});
   });
   try{await batch.commit();}catch(e){alert(`저장 오류\n${e.message}`);return;}
 
