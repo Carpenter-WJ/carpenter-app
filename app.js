@@ -2617,15 +2617,19 @@ function renderMemberStats() {
 
 function renderIncomeChart() {
   const months=[];
-  for(let i=2;i>=0;i--){
+  const monthCount = isPremium ? 12 : 3;
+  for(let i=monthCount-1;i>=0;i--){
     let y=statY, m=statM-i;
     if(m<0){m+=12;y--;}
     const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
       .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
     months.push({y,m,wage,lbl:`${m+1}월`});
   }
+  const titleEl=document.getElementById('chartTitle');
+  if(titleEl) titleEl.textContent=`최근 ${monthCount}개월 수입 추이`;
   const max=Math.max(...months.map(x=>x.wage),1);
-  const chartH=90,padB=32,barW=64,gap=20;
+  const chartH=90,padB=32;
+  const barW=isPremium?20:64, gap=isPremium?5:20;
   const totalW=months.length*(barW+gap)-gap;
   const bars=months.map((mo,i)=>{
     const x=i*(barW+gap);
@@ -2872,6 +2876,26 @@ function renderStat() {
   const statMonthLbl=isCurStat?'이번 달':`${statY}년 ${statM+1}월`;
   const statSuffix=(dataMode==='team'&&teamRole!=='leader')?' (내 기록 기준)':'';
   const isLeaderStat = dataMode==='team' && teamRole==='leader';
+
+  // 연간 요약 (프리미엄 전용)
+  let annualHtml = '';
+  if (isPremium) {
+    let yearWage = 0;
+    statBase.filter(w=>getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY;}))
+      .forEach(w=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY;}).length;yearWage+=cnt*Number(w.wage)*Number(w.unit||1);});
+    let prevWage = 0;
+    statBase.filter(w=>getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY-1;}))
+      .forEach(w=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY-1;}).length;prevWage+=cnt*Number(w.wage)*Number(w.unit||1);});
+    const diffPct = prevWage>0 ? Math.round((yearWage-prevWage)/prevWage*100) : null;
+    const diffStr = diffPct!==null
+      ? `<span style="font-size:11px;font-weight:700;color:${diffPct>=0?'var(--green)':'var(--red)'}">${diffPct>=0?'+':''}${diffPct}%</span>`
+      : '';
+    annualHtml = `<div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;display:flex;justify-content:space-between;align-items:center">
+      <div class="shb-lbl">${statY}년 누적 수입</div>
+      <div style="font-size:16px;font-weight:800;color:var(--fg);display:flex;align-items:center;gap:6px">${(yearWage/10000).toFixed(1)}만 ${diffStr}</div>
+    </div>`;
+  }
+
   document.getElementById('statHero').innerHTML=`
     <div class="stat-hero">
       <div class="stat-hero-lbl">${statMonthLbl} ${isLeaderStat?'총 인건비':'총 임금'}</div>
@@ -2887,7 +2911,14 @@ function renderStat() {
           ${allOutstanding!==mOutstanding?`<div class="shb-sub">전체 ${(allOutstanding/10000).toFixed(1)}만</div>`:''}
         </div>
       </div>
+      ${annualHtml}
     </div>`;
+
+  // 내보내기 툴바 / 프리미엄 섹션 표시 제어
+  const exportEl=document.getElementById('exportToolbar');
+  const premEl=document.getElementById('premSection');
+  if(exportEl) exportEl.style.display=isPremium?'':'none';
+  if(premEl) premEl.style.display=isPremium?'none':'';
   document.getElementById('statSubGrid').innerHTML=`
     <div class="ssb"><div class="ssl">작업일수</div><div class="ssv">${workDays}일</div></div>
     <div class="ssb"><div class="ssl">품수</div><div class="ssv">${sUnitStr}품</div></div>
