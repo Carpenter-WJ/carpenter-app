@@ -32,8 +32,11 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.leaderUid == request.auth.uid
         && request.resource.data.memberCount == 1;
-      // 팀 문서 업데이트는 팀장만 (가입 신청 승인, 멤버 카운트 증감 포함)
-      allow update: if isTeamLeader(teamId, request.auth.uid);
+      // 팀 문서 업데이트: 팀장 전체, 팀원은 자진탈퇴 시 memberCount -1만 허용
+      allow update: if isTeamLeader(teamId, request.auth.uid)
+        || (isTeamMember(teamId, request.auth.uid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
+            && request.resource.data.memberCount == resource.data.memberCount - 1);
       allow delete: if false;
 
       match /members/{memberUid} {
@@ -50,7 +53,10 @@ service cloud.firestore {
               && request.resource.data.role == 'member');
 
         allow update: if isTeamLeader(teamId, request.auth.uid);
-        allow delete: if isTeamLeader(teamId, request.auth.uid);
+        // 팀장이 강제퇴출하거나 본인이 자진탈퇴 시 삭제 허용
+        allow delete: if isTeamLeader(teamId, request.auth.uid)
+          || (request.auth != null && request.auth.uid == memberUid
+              && isTeamMember(teamId, request.auth.uid));
       }
 
       // 가입 신청 — 코드 확인 후 팀장 승인 대기

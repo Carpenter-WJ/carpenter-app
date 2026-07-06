@@ -1059,6 +1059,63 @@ async function deleteTeam() {
   } catch (e) { console.error(e); alert('팀 해체에 실패했습니다: ' + e.message); }
 }
 
+async function leaveTeam() {
+  if (teamRole === 'leader') return;
+  if (!confirm('팀을 탈퇴하면 팀 기록은 더 이상 볼 수 없어요.\n내 작업 기록은 개인으로 이관돼요.\n계속할까요?')) return;
+  try {
+    const t = teamRef();
+    const myUid = currentUser.uid;
+    const tName = teamInfo.name || '';
+    const userRef = fsdb.collection('users').doc(myUid);
+
+    const [jobsSnap, wagesSnap, paysSnap] = await Promise.all([
+      t.collection('jobs').get(),
+      t.collection('wages').where('ownerUid', '==', myUid).get(),
+      t.collection('payments').where('createdBy', '==', myUid).get()
+    ]);
+    const jobById = {};
+    jobsSnap.docs.forEach(d => { jobById[d.id] = d.data(); });
+
+    if (wagesSnap.docs.length > 0 || paysSnap.docs.length > 0) {
+      const batch = fsdb.batch();
+      wagesSnap.docs.forEach(d => {
+        const wg = d.data(); const job = jobById[wg.jobId] || {};
+        batch.set(userRef.collection('works').doc(d.id), {
+          id: d.id, jobId: wg.jobId,
+          site: job.site || '(팀 현장)', address: job.address || '',
+          contact: job.contact || '', phone: job.phone || '',
+          memo: job.memo || '', color: job.color || '#007AFF',
+          dates: wg.dates || [], unit: wg.unit || 1,
+          wage: wg.wage, isPaid: wg.isPaid || false,
+          createdBy: wg.createdBy, teamName: tName
+        });
+      });
+      paysSnap.docs.forEach(d => {
+        const p = d.data();
+        batch.set(userRef.collection('payments').doc(d.id), {
+          id: d.id, date: p.date, amount: p.amount,
+          note: p.note || '', workId: p.wageId || '',
+          createdBy: p.createdBy
+        });
+      });
+      await batch.commit();
+    }
+
+    const batch2 = fsdb.batch();
+    batch2.delete(t.collection('members').doc(myUid));
+    batch2.update(t, { memberCount: firebase.firestore.FieldValue.increment(-1) });
+    batch2.update(userRef, { teamId: firebase.firestore.FieldValue.delete() });
+    await batch2.commit();
+
+    activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
+    dataMode = 'personal';
+    DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
+    await loadData();
+    renderTeamSettings();
+    showToast('팀을 탈퇴했습니다. 작업 기록이 개인으로 이관됐어요.');
+  } catch (e) { console.error(e); alert('탈퇴에 실패했습니다.\n' + e.message); }
+}
+
 async function loadTeamMembers() {
   if (!activeTeamId) return;
   const snap = await teamRef().collection('members').get();
@@ -1209,7 +1266,11 @@ function renderTeamSettings() {
     <div class="set-item" style="cursor:pointer" onclick="deleteTeam()">
       <div class="set-icon" style="background:rgba(255,59,48,.12)">🗑️</div>
       <div class="set-text"><div class="set-item-lbl" style="color:var(--red)">팀 해체</div><div class="set-item-sub">기록은 각자 개인으로 이관돼요</div></div>
-    </div>` : ''}`;
+    </div>` : `
+    <div class="set-item" style="cursor:pointer" onclick="leaveTeam()">
+      <div class="set-icon" style="background:rgba(255,59,48,.12)">🚪</div>
+      <div class="set-text"><div class="set-item-lbl" style="color:var(--red)">팀 탈퇴</div><div class="set-item-sub">내 작업 기록은 개인으로 이관돼요</div></div>
+    </div>`}`;
 }
 
 function doSignOut() {
