@@ -3122,6 +3122,101 @@ function renderStat() {
   const premEl=document.getElementById('premSection');
   if(exportEl) exportEl.style.display=isPremium?'':'none';
   if(premEl) premEl.style.display=isPremium?'none':'';
+
+  // 프리미엄 분석 섹션
+  const premAnalysisEl = document.getElementById('premAnalysis');
+  if (premAnalysisEl) {
+    if (!isPremium) { premAnalysisEl.innerHTML = ''; }
+    else {
+      // ── YTD 계산 (1월~statM, statY vs statY-1) ──
+      const ytdMonths = statM + 1; // 1~statM+1월
+      let ytdThis = 0, ytdPrev = 0;
+      for (let m = 0; m <= statM; m++) {
+        statBase.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned').forEach(w=>{
+          const thisCnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}).length;
+          const prevCnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY-1&&p.m===m;}).length;
+          ytdThis+=thisCnt*Number(w.wage)*Number(w.unit||1);
+          ytdPrev+=prevCnt*Number(w.wage)*Number(w.unit||1);
+        });
+      }
+      const ytdDiff = ytdThis - ytdPrev;
+      const ytdPct = ytdPrev > 0 ? Math.round(ytdDiff / ytdPrev * 100) : null;
+      const ytdColor = ytdDiff >= 0 ? 'var(--green)' : 'var(--red)';
+      const ytdArrow = ytdDiff >= 0 ? '↑' : '↓';
+      const ytdDiffText = ytdPrev > 0
+        ? `${ytdArrow} 작년보다 <b>${Math.abs(ytdDiff/10000).toFixed(1)}만원</b> ${ytdDiff>=0?'더':'덜'} 벌었어요 <span style="font-size:13px">(${ytdDiff>=0?'+':''}${ytdPct}%)</span>`
+        : `작년 같은 기간 데이터가 없어요`;
+      const periodLbl = `1~${statM+1}월 누계`;
+
+      // ── 연간 월별 요약 계산 ──
+      const monthlyWages = [];
+      for (let m = 0; m < 12; m++) {
+        let w = 0;
+        statBase.filter(x=>x.wage!=null&&getWorkStatus(x)!=='planned').forEach(x=>{
+          const cnt=(x.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}).length;
+          w+=cnt*Number(x.wage)*Number(x.unit||1);
+        });
+        monthlyWages.push({m, w});
+      }
+      const activeMonths = monthlyWages.filter(x=>x.w>0);
+      const avgMonthly = activeMonths.length > 0 ? Math.round(activeMonths.reduce((s,x)=>s+x.w,0)/activeMonths.length) : 0;
+      const bestMonth = activeMonths.length > 0 ? activeMonths.reduce((a,b)=>a.w>b.w?a:b) : null;
+      const worstMonth = activeMonths.length > 1 ? activeMonths.reduce((a,b)=>a.w<b.w?a:b) : null;
+      const yearWorkDays = new Set(
+        statBase.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned')
+          .flatMap(w=>(w.dates||[]).filter(d=>parsD(d).y===statY))
+      ).size;
+      const monthNames=['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+
+      premAnalysisEl.innerHTML = `
+        <div style="margin:4px 14px 4px">
+          <!-- YTD 비교 -->
+          <div style="background:var(--card);border-radius:16px;padding:16px;margin-bottom:8px">
+            <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.3px;margin-bottom:12px">작년 동기간 비교 · ${periodLbl}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+              <div style="background:var(--bg);border-radius:12px;padding:13px 14px">
+                <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">${statY-1}년 ${periodLbl}</div>
+                <div style="font-size:22px;font-weight:900;color:var(--fg)">${ytdPrev>0?(ytdPrev/10000).toFixed(1)+'만':'—'}</div>
+              </div>
+              <div style="background:rgba(0,122,255,.07);border-radius:12px;padding:13px 14px;border:1.5px solid rgba(0,122,255,.18)">
+                <div style="font-size:11px;color:var(--pri);font-weight:600;margin-bottom:4px">${statY}년 ${periodLbl}</div>
+                <div style="font-size:22px;font-weight:900;color:var(--pri)">${(ytdThis/10000).toFixed(1)}만</div>
+              </div>
+            </div>
+            <div style="padding:11px 14px;background:var(--bg);border-radius:11px;font-size:14px;font-weight:600;color:${ytdColor};text-align:center;line-height:1.6">
+              ${ytdDiffText}
+            </div>
+          </div>
+          <!-- 월별 요약 -->
+          <div style="background:var(--card);border-radius:16px;padding:16px">
+            <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.3px;margin-bottom:12px">${statY}년 월별 요약</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="background:var(--bg);border-radius:12px;padding:12px 14px">
+                <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:3px">월 평균 수입</div>
+                <div style="font-size:20px;font-weight:800;color:var(--fg)">${avgMonthly>0?(avgMonthly/10000).toFixed(1)+'만':'—'}</div>
+                ${activeMonths.length>0?`<div style="font-size:10px;color:var(--muted);margin-top:2px">활동 ${activeMonths.length}개월 기준</div>`:''}
+              </div>
+              <div style="background:var(--bg);border-radius:12px;padding:12px 14px">
+                <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:3px">연간 총 작업일수</div>
+                <div style="font-size:20px;font-weight:800;color:var(--fg)">${yearWorkDays}일</div>
+              </div>
+              <div style="background:var(--bg);border-radius:12px;padding:12px 14px">
+                <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:3px">최고 달</div>
+                ${bestMonth
+                  ? `<div style="font-size:17px;font-weight:800;color:var(--green)">${monthNames[bestMonth.m]}</div><div style="font-size:11px;color:var(--muted);margin-top:1px">${(bestMonth.w/10000).toFixed(1)}만원</div>`
+                  : `<div style="font-size:17px;font-weight:800;color:var(--muted)">—</div>`}
+              </div>
+              <div style="background:var(--bg);border-radius:12px;padding:12px 14px">
+                <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:3px">최저 달</div>
+                ${worstMonth
+                  ? `<div style="font-size:17px;font-weight:800;color:var(--red)">${monthNames[worstMonth.m]}</div><div style="font-size:11px;color:var(--muted);margin-top:1px">${(worstMonth.w/10000).toFixed(1)}만원</div>`
+                  : `<div style="font-size:17px;font-weight:800;color:var(--muted)">—</div>`}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+  }
   document.getElementById('statSubGrid').innerHTML=`
     <div class="ssb"><div class="ssl">작업일수</div><div class="ssv">${workDays}일</div></div>
     <div class="ssb"><div class="ssl">품수</div><div class="ssv">${sUnitStr}품</div></div>
