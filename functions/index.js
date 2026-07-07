@@ -36,30 +36,32 @@ exports.generateSiteBriefing = onCall({
     }
   }
 
-  const lines = [`현장명: ${site}`];
-  if (address) lines.push(`주소: ${address}`);
-  if (workDesc) lines.push(`작업 내용: ${workDesc}`);
-  if (contact) lines.push(`담당자: ${contact}${phone ? ` (${phone})` : ''}`);
-  if (memo) lines.push(`현장 메모: ${memo}`);
+  const info = [`현장명: ${site}`];
+  if (workDesc) info.push(`작업 내용: ${workDesc}`);
+  if (address) info.push(`주소: ${address}`);
+  if (contact) info.push(`담당자: ${contact}${phone ? ` (${phone})` : ''}`);
+  if (memo) info.push(`메모: ${memo}`);
 
   const recentDates = (dates || []).sort().slice(-10);
-  if (recentDates.length) lines.push(`최근 작업일: ${recentDates.join(', ')}`);
-
-  const workerLines = (workers || []).map(w =>
-    `- ${w.name}: 일당 ${Number(w.wage || 0).toLocaleString('ko-KR')}원 × ${w.unit || 1}품`
-  );
-  if (workerLines.length) lines.push(`\n참여 인원:\n${workerLines.join('\n')}`);
+  if (recentDates.length) info.push(`진행 날짜: ${recentDates.join(', ')}`);
 
   const prompt = `다음 건설 현장 정보를 바탕으로 팀장을 위한 현장 브리핑 노트를 한국어로 작성해줘.
 
-${lines.join('\n')}
+${info.join('\n')}
 
-아래 항목을 포함해서 간결하게 작성해줘:
-• 현장 요약 (2~3문장)
-• 주요 작업 및 특이사항
-• 인건비 현황
+아래 두 항목만 작성해줘:
 
-전문적이고 실용적인 어조로, 핵심만 담아 250자 내외로 써줘.`;
+현장 개요
+(현장 상황을 2~3문장으로 요약)
+
+주요 작업 및 특이사항
+(작업 내용, 현장 주소, 담당자 연락처, 메모 등 현장에서 알아야 할 내용)
+
+주의사항:
+- 마크다운 기호(**, ##, - 등) 절대 사용 금지, 일반 텍스트로만 작성
+- 인건비·일당·임금 정보는 포함하지 않음
+- 항목 제목은 그대로 사용하되 앞뒤 줄바꿈으로만 구분
+- 250자 내외로 간결하게`;
 
   const client = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
   const response = await client.messages.create({
