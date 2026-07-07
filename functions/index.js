@@ -45,17 +45,21 @@ exports.generateSiteBriefing = onCall({
   const recentDates = (dates || []).sort().slice(-10);
   if (recentDates.length) info.push(`진행 날짜: ${recentDates.join(', ')}`);
 
-  const prompt = `다음 건설 현장 정보를 바탕으로 팀장을 위한 현장 브리핑 노트를 작성해줘.
+  const prompt = `아래 현장 정보를 바탕으로 팀장용 메모를 작성해줘.
 
 ${info.join('\n')}
 
-작성 규칙:
-- 섹션 제목 없이 바로 내용만 작성
-- 작업 내용, 현장 주소, 담당자 연락처, 특이사항(메모) 순서로 각 항목을 한 줄씩 서술
-- 마크다운 기호(**, ##, -, * 등) 절대 사용 금지
-- 인건비·일당·임금 정보는 포함하지 않음
-- 200자 내외로 간결하게
-- 한국어로 작성`;
+출력 형식 예시:
+가벽 설치 및 마감 작업 진행 예정.
+주소: 서울시 강남구 테헤란로 123, 5층
+담당자: 김철수 (010-1234-5678)
+특이사항: 지하 주차장 이용 가능, 출입 비번 1234
+
+지켜야 할 규칙:
+- 예시처럼 제목·헤더 없이 내용만 줄바꿈으로 나열
+- 특수기호(**, ##, -, * 등) 사용 금지
+- 일당·인건비 내용 포함 금지
+- 200자 내외`;
 
   const client = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY});
   const response = await client.messages.create({
