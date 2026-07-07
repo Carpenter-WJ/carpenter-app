@@ -1252,7 +1252,9 @@ function renderTeamSettings() {
         <div class="set-item-lbl">${teamInfo.name}</div>
         <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${teamInfo.maxMembers}명</div>
       </div>
-      <span style="color:var(--muted);font-size:18px">›</span>
+      ${teamRole === 'leader'
+        ? `<button onclick="event.stopPropagation();renameTeam()" style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer">수정</button>`
+        : `<span style="color:var(--muted);font-size:18px">›</span>`}
     </div>
     ${teamRole === 'leader' ? `
     <div class="set-item" style="cursor:pointer" onclick="openTeamRequestsOv()">
