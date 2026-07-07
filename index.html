@@ -168,6 +168,10 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       PDF 출력
     </button>
+    <button class="export-btn" id="wageStmtBtn" onclick="openWageStatement()" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      인건비 명세서
+    </button>
   </div>
   <div class="prem-section" id="premSection">
     <div class="prem-section-title">곧 출시</div>
@@ -511,6 +515,31 @@
       <div style="font-size:14px;color:var(--muted);line-height:1.65;margin-bottom:24px">최근 3개월 이전 통계는<br>프리미엄 플랜에서 이용할 수 있어요<br><br>연간 수입 추이, 전년 대비 비교 등<br>더 상세한 통계를 곧 만나보세요</div>
       <div style="background:var(--pri);color:#fff;border-radius:14px;padding:15px;font-size:15px;font-weight:700;opacity:0.45;margin-bottom:12px">준비 중이에요</div>
       <button onclick="closeOv('premUpgradeOv')" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px;font-size:15px;font-weight:600;color:var(--muted);cursor:pointer">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 인건비 명세서 오버레이 -->
+<div class="ov" id="wageStatementOv">
+  <div class="sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0">
+    <div class="sh-handle" style="margin:10px auto 0"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:0;background:var(--bg);border-radius:10px;padding:2px">
+          <button onclick="moveWageStmt(-1)" style="background:none;border:none;width:32px;height:32px;font-size:17px;color:var(--muted);cursor:pointer;border-radius:8px;display:flex;align-items:center;justify-content:center">‹</button>
+          <span id="wageStmtLbl" style="font-size:13px;font-weight:700;min-width:90px;text-align:center;color:var(--text)"></span>
+          <button onclick="moveWageStmt(1)" style="background:none;border:none;width:32px;height:32px;font-size:17px;color:var(--muted);cursor:pointer;border-radius:8px;display:flex;align-items:center;justify-content:center">›</button>
+        </div>
+        <div class="sh-title" style="margin-bottom:0;font-size:16px">인건비 명세서</div>
+      </div>
+      <button onclick="closeOv('wageStatementOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
+    <div id="wageStmtContent" style="overflow-y:auto;flex:1;padding:16px 20px 8px"></div>
+    <div style="padding:12px 20px 24px;border-top:1px solid var(--border)">
+      <button onclick="printWageStatement()" style="width:100%;padding:14px;background:linear-gradient(135deg,#1a1a2e,#374151);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        PDF 출력
+      </button>
     </div>
   </div>
 </div>

@@ -63,6 +63,7 @@ let isPremium = false; // 결제 연동 시 교체
 let guestUsageThisMonth = 0; // 이번 달 직접 입력 사용 횟수 (무료 월 2회)
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
+let wageStmtY = TODAY.getFullYear(), wageStmtM = TODAY.getMonth();
 let workSearch = '';
 let showWeekSum = localStorage.getItem('showWeekSum') !== 'false';
 let curTab = 'cal';
@@ -417,6 +418,13 @@ async function loadTeamData() {
       DB.payments = [...DB.payments, ...personalPays];
     }
   } catch(e) { console.warn('개인 날일 기록 로드 오류:', e.message); }
+  // 프리미엄 팀장: maxMembers 자동 업그레이드
+  if (isPremium && isLeader && teamInfo && teamInfo.maxMembers <= 5) {
+    try {
+      await teamRef().update({ maxMembers: 20 });
+      teamInfo.maxMembers = 20;
+    } catch(e) { console.warn('maxMembers 업그레이드 실패:', e.message); }
+  }
   updateNotifBadge();
   startNotifListener(activeTeamId);
 }
@@ -842,7 +850,7 @@ async function approveJoinRequest(uid) {
   if (teamRole !== 'leader') return;
   const req = joinRequests.find(r => r.id === uid);
   if (!req) return;
-  if (teamInfo.memberCount >= teamInfo.maxMembers) { alert('팀 정원이 가득 찼습니다.'); return; }
+  if (!isPremium && teamInfo.memberCount >= teamInfo.maxMembers) { alert('팀 정원이 가득 찼습니다.'); return; }
   try {
     const t = teamRef();
     const batch = fsdb.batch();
@@ -1146,7 +1154,8 @@ function renderMemberList() {
   const subtitleEl = document.getElementById('teamMembersSubtitle');
   const renameBtn = document.getElementById('teamRenameBtn');
   if (titleEl && teamInfo) titleEl.textContent = teamInfo.name || '팀원 목록';
-  if (subtitleEl) subtitleEl.textContent = `팀원 ${teamMembers.length}명`;
+  const maxLabel = isPremium && teamRole === 'leader' ? '무제한' : (teamInfo?.maxMembers || 3) + '명';
+  if (subtitleEl) subtitleEl.textContent = `팀원 ${teamMembers.length}명 / ${maxLabel}`;
   if (renameBtn) renameBtn.style.display = teamRole === 'leader' ? '' : 'none';
   const wrap = document.getElementById('teamMemberList');
   wrap.innerHTML = teamMembers.map(m => `
@@ -1256,7 +1265,7 @@ function renderTeamSettings() {
       <div class="set-icon" style="background:rgba(0,122,255,.12)">👥</div>
       <div class="set-text">
         <div class="set-item-lbl">${teamInfo.name}</div>
-        <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${teamInfo.maxMembers}명</div>
+        <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${isPremium && teamRole === 'leader' ? '무제한' : teamInfo.maxMembers}명</div>
       </div>
       <span style="color:var(--muted);font-size:18px">›</span>
     </div>
@@ -3122,6 +3131,8 @@ function renderStat() {
   const premEl=document.getElementById('premSection');
   if(exportEl) exportEl.style.display=isPremium?'':'none';
   if(premEl) premEl.style.display=isPremium?'none':'';
+  const wageStmtBtnEl=document.getElementById('wageStmtBtn');
+  if(wageStmtBtnEl) wageStmtBtnEl.style.display=(isPremium&&dataMode==='team'&&teamRole==='leader')?'':'none';
 
   // 프리미엄 분석 섹션
   const premAnalysisEl = document.getElementById('premAnalysis');
@@ -3244,6 +3255,260 @@ function renderStat() {
         </div>
       </div>`;
   }).join('');
+}
+
+// ── 인건비 명세서 (팀장 프리미엄) ──
+function openWageStatement() {
+  wageStmtY = statY; wageStmtM = statM;
+  renderWageStatement();
+  openOv('wageStatementOv');
+}
+function moveWageStmt(d) {
+  wageStmtM += d;
+  if (wageStmtM > 11) { wageStmtM = 0; wageStmtY++; }
+  if (wageStmtM < 0) { wageStmtM = 11; wageStmtY--; }
+  renderWageStatement();
+}
+function _wageStmtWorks(uid, guestName) {
+  return DB.works.filter(w => {
+    if (w.isPersonal) return false;
+    if (uid) {
+      if (w.isGuest) return false;
+      return (w.ownerUid || w.createdBy) === uid;
+    }
+    return w.isGuest && (w.guestName || '이름 없음') === guestName;
+  }).filter(w => (w.dates || []).some(d => { const p = parsD(d); return p.y === wageStmtY && p.m === wageStmtM; }));
+}
+function _buildWageCard(name, roleLabel, isLeaderRole, works) {
+  const isGuest = roleLabel === '외부';
+  let monthTotal = 0;
+  const rows = works.map(w => {
+    const mDates = (w.dates || []).filter(d => { const p = parsD(d); return p.y === wageStmtY && p.m === wageStmtM; });
+    const u = Number(w.unit || 1);
+    const mAmt = mDates.length * Number(w.wage) * u;
+    monthTotal += mAmt;
+    const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
+    const badge = w.isPaid
+      ? `<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(52,199,89,.15);color:#34C759;font-weight:700">완납</span>`
+      : fullUnpaid > 0
+        ? `<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,149,0,.15);color:#FF9500;font-weight:700">미지급</span>`
+        : `<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--bg);color:var(--muted);font-weight:700">대기</span>`;
+    return `<div style="display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${w.site}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(w.wage)}${u !== 1 ? ' · ' + u + '품' : ''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--fg)">${fmtW(mAmt)}</div>
+        <div style="margin-top:3px">${badge}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const totalDays = new Set(works.flatMap(w => (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }))).size;
+  const roleBg = isLeaderRole ? 'background:rgba(0,122,255,.12);color:var(--pri)' : isGuest ? 'background:rgba(255,149,0,.12);color:#FF9500' : 'background:var(--bg);color:var(--muted)';
+  return `<div class="card" style="margin-bottom:10px;padding:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
+      <div style="font-size:15px;font-weight:700;color:var(--fg)">${name}</div>
+      <span style="font-size:10px;padding:2px 9px;border-radius:20px;font-weight:700;${roleBg}">${roleLabel}</span>
+    </div>
+    ${works.length === 0
+      ? '<div style="font-size:13px;color:var(--muted);padding:4px 0">이번 달 작업 없음</div>'
+      : rows + `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;margin-top:1px">
+          <div style="font-size:12px;color:var(--muted)">${totalDays}일 · ${works.length}개 현장</div>
+          <div style="font-size:16px;font-weight:800;color:var(--fg)">${fmtW(monthTotal)}</div>
+        </div>`
+    }
+  </div>`;
+}
+function renderWageStatement() {
+  const lbl = document.getElementById('wageStmtLbl');
+  const content = document.getElementById('wageStmtContent');
+  if (!content) return;
+  if (lbl) lbl.textContent = `${wageStmtY}년 ${wageStmtM + 1}월`;
+  let html = '';
+  let grandTotal = 0;
+  teamMembers.forEach(m => {
+    const works = _wageStmtWorks(m.uid, null);
+    const mTotal = works.reduce((s, w) => {
+      const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
+      return s + cnt * Number(w.wage) * Number(w.unit||1);
+    }, 0);
+    grandTotal += mTotal;
+    const name = (m.customName || m.displayName || '이름 없음') + (m.uid === currentUser.uid ? ' (나)' : '');
+    html += _buildWageCard(name, m.role === 'leader' ? '팀장' : '팀원', m.role === 'leader', works);
+  });
+  // 직접 입력 인력
+  const allGuestWorks = DB.works.filter(w => w.isGuest && !w.isPersonal && (w.dates||[]).some(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }));
+  const guestNames = [...new Set(allGuestWorks.map(w => w.guestName || '이름 없음'))];
+  guestNames.forEach(gName => {
+    const gw = _wageStmtWorks(null, gName);
+    const mTotal = gw.reduce((s, w) => {
+      const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
+      return s + cnt * Number(w.wage) * Number(w.unit||1);
+    }, 0);
+    grandTotal += mTotal;
+    html += _buildWageCard(gName, '외부', false, gw);
+  });
+  html += `<div style="background:var(--bg-sub);border-radius:16px;padding:16px 18px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">
+    <div style="font-size:13px;color:var(--muted);font-weight:600">${wageStmtY}년 ${wageStmtM + 1}월 총 인건비</div>
+    <div style="font-size:22px;font-weight:800;color:var(--fg)">${fmtW(grandTotal)}</div>
+  </div>`;
+  content.innerHTML = html;
+}
+function printWageStatement() {
+  const now = new Date();
+  const teamName = teamInfo?.name || '';
+  const monthLabel = `${wageStmtY}년 ${wageStmtM + 1}월`;
+  const todayLabel = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+
+  let memberSections = '';
+  let grandTotal = 0;
+  const allSections = [];
+
+  teamMembers.forEach(m => {
+    const works = _wageStmtWorks(m.uid, null);
+    if (works.length === 0 && m.uid !== currentUser.uid) return;
+    const name = (m.customName || m.displayName || '이름 없음') + (m.uid === currentUser.uid ? ' (나)' : '');
+    const roleLabel = m.role === 'leader' ? '팀장' : '팀원';
+    let mTotal = 0;
+    const rows = works.map(w => {
+      const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
+      const u = Number(w.unit||1);
+      const mAmt = mDates.length * Number(w.wage) * u;
+      mTotal += mAmt;
+      const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
+      const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
+      const statusCls = w.isPaid ? 'paid' : fullUnpaid > 0 ? 'unpaid' : 'pending';
+      return `<tr>
+        <td class="td-site">${w.site}</td>
+        <td class="td-sub">${formatDatesShort(mDates)}</td>
+        <td class="td-num">${fmtW(w.wage)}</td>
+        <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+        <td class="td-num td-bold">${fmtW(mAmt)}</td>
+        <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
+      </tr>`;
+    }).join('');
+    grandTotal += mTotal;
+    allSections.push({ name, roleLabel, rows, mTotal, worksCount: works.length });
+  });
+
+  // 직접 입력
+  const allGuestWorks = DB.works.filter(w => w.isGuest && !w.isPersonal && (w.dates||[]).some(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }));
+  const guestNames = [...new Set(allGuestWorks.map(w => w.guestName || '이름 없음'))];
+  guestNames.forEach(gName => {
+    const gw = _wageStmtWorks(null, gName);
+    let mTotal = 0;
+    const rows = gw.map(w => {
+      const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
+      const u = Number(w.unit||1);
+      const mAmt = mDates.length * Number(w.wage) * u;
+      mTotal += mAmt;
+      const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
+      const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
+      const statusCls = w.isPaid ? 'paid' : fullUnpaid > 0 ? 'unpaid' : 'pending';
+      return `<tr>
+        <td class="td-site">${w.site}</td>
+        <td class="td-sub">${formatDatesShort(mDates)}</td>
+        <td class="td-num">${fmtW(w.wage)}</td>
+        <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+        <td class="td-num td-bold">${fmtW(mAmt)}</td>
+        <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
+      </tr>`;
+    }).join('');
+    grandTotal += mTotal;
+    allSections.push({ name: gName, roleLabel: '외부', rows, mTotal, worksCount: gw.length });
+  });
+
+  memberSections = allSections.map(s => `
+    <div class="member-block">
+      <div class="member-header">
+        <div class="member-name">${s.name}</div>
+        <span class="member-role">${s.roleLabel}</span>
+      </div>
+      ${s.worksCount === 0
+        ? '<div class="no-work">이번 달 작업 없음</div>'
+        : `<table><thead><tr>
+            <th>현장명</th><th>작업 기간</th>
+            <th style="text-align:right">일당</th><th style="text-align:right">품수</th>
+            <th style="text-align:right">이번 달 금액</th><th style="text-align:center">정산</th>
+          </tr></thead><tbody>${s.rows}</tbody></table>
+          <div class="member-total">이번 달 합계 <strong>${fmtW(s.mTotal)}</strong></div>`
+      }
+    </div>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>${monthLabel} 인건비 명세서</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Pretendard',system-ui,-apple-system,sans-serif;color:#1a1a1a;background:#fff;padding:52px 60px;font-size:13px;line-height:1.6;}
+  .doc-header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:20px;border-bottom:2px solid #1a1a1a;margin-bottom:36px;}
+  .doc-brand{font-size:12px;font-weight:700;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:6px;}
+  .doc-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
+  .doc-sub{font-size:13px;color:#666;margin-top:4px;}
+  .doc-meta{text-align:right;font-size:12px;color:#666;line-height:2;}
+  .doc-meta strong{color:#1a1a1a;font-size:15px;font-weight:700;display:block;margin-bottom:2px;}
+  .member-block{margin-bottom:32px;}
+  .member-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #f0f0f0;}
+  .member-name{font-size:16px;font-weight:700;}
+  .member-role{font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:#f0f0f0;color:#666;}
+  .no-work{font-size:13px;color:#aaa;padding:8px 0;}
+  table{width:100%;border-collapse:collapse;margin-bottom:0;}
+  th{font-size:11px;font-weight:600;color:#aaa;text-align:left;padding:8px 10px;background:#fafafa;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;}
+  td{padding:10px 10px;border-bottom:1px solid #f5f5f5;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .td-site{font-weight:600;}
+  .td-sub{color:#888;font-size:12px;}
+  .td-num{text-align:right;font-variant-numeric:tabular-nums;}
+  .td-bold{font-weight:700;}
+  .td-center{text-align:center;}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+  .s-paid{background:#e8f5e9;color:#2e7d32;}
+  .s-unpaid{background:#fff3e0;color:#e65100;}
+  .s-pending{background:#f5f5f5;color:#888;}
+  .member-total{text-align:right;font-size:13px;color:#666;padding:10px 2px 0;border-top:1px solid #f0f0f0;margin-top:2px;}
+  .member-total strong{font-size:15px;font-weight:700;color:#1a1a1a;margin-left:8px;}
+  .grand-total{margin-top:36px;padding:20px 24px;background:#1a1a1a;color:#fff;border-radius:12px;display:flex;justify-content:space-between;align-items:center;}
+  .grand-label{font-size:13px;color:#aaa;}
+  .grand-value{font-size:24px;font-weight:800;letter-spacing:-0.5px;}
+  .doc-footer{margin-top:52px;padding-top:16px;border-top:1px solid #ebebeb;font-size:11px;color:#ccc;text-align:center;letter-spacing:0.5px;}
+  @media print{
+    body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{margin:15mm 18mm;size:A4;}
+    .member-block{page-break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+<div class="doc-header">
+  <div>
+    <div class="doc-brand">목수일지</div>
+    <div class="doc-title">${monthLabel} 인건비 명세서</div>
+    <div class="doc-sub">${teamName} · ${monthLabel}</div>
+  </div>
+  <div class="doc-meta">
+    <strong>${userDisplayName || ''}</strong>
+    작성일 ${todayLabel}
+  </div>
+</div>
+${memberSections}
+<div class="grand-total">
+  <div class="grand-label">${monthLabel} 팀 총 인건비</div>
+  <div class="grand-value">${fmtW(grandTotal)}</div>
+</div>
+<div class="doc-footer">목수일지 · carpenter-wj.github.io/carpenter-app</div>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=860,height=720');
+  if (!win) { alert('팝업이 차단되어 있어요. 브라우저에서 팝업 허용 후 다시 시도해 주세요.'); return; }
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 600);
 }
 
 // ── 백업 ──
