@@ -1625,19 +1625,31 @@ function openWorkOv(workId, prefillDate) {
 async function generateBriefing() {
   const workId = document.getElementById('editWorkId').value;
   if (!workId) return;
-  const w = DB.works.find(x => x.id === workId);
-  if (!w) return;
 
-  // 같은 jobId를 가진 모든 인원 수집
-  const jobWorkers = w.jobId
+  // saveWork() 실행 전에 폼 데이터 미리 캡처
+  const site = document.getElementById('inSite').value.trim();
+  const workDesc = document.getElementById('inWorkDesc').value.trim();
+  const address = document.getElementById('inAddress').value.trim();
+  const contact = document.getElementById('inContact').value.trim();
+  const phone = document.getElementById('inPhone').value.trim();
+  const memo = document.getElementById('inMemo').value.trim();
+  const dates = [...editDates];
+
+  const w = DB.works.find(x => x.id === workId);
+  const jobWorkers = w?.jobId
     ? DB.works.filter(x => x.jobId === w.jobId && !x.isPersonal)
-    : [w];
+    : w ? [w] : [];
   const workers = jobWorkers.map(jw => ({
-    name: workerLabel(jw),
-    wage: jw.wage,
-    unit: jw.unit || 1,
+    name: workerLabel(jw), wage: jw.wage, unit: jw.unit || 1,
   }));
 
+  // 먼저 저장 (saveWork 내부에서 closeAll → workOv 닫힘)
+  await saveWork();
+
+  // saveWork가 유효성 오류로 조기 종료하면 workOv가 아직 열려있음
+  if (document.getElementById('workOv').classList.contains('show')) return;
+
+  // 저장 완료 후 브리핑 오버레이 열기
   const bc = document.getElementById('briefingContent');
   const copyBtn = document.getElementById('briefingCopyBtn');
   bc.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--muted);font-size:14px">브리핑 생성 중...</div>';
@@ -1647,16 +1659,7 @@ async function generateBriefing() {
   try {
     const fn = firebase.app().functions('asia-northeast3');
     const call = fn.httpsCallable('generateSiteBriefing');
-    const result = await call({
-      site: w.site,
-      workDesc: w.workDesc || '',
-      address: w.address || '',
-      contact: w.contact || '',
-      phone: w.phone || '',
-      memo: w.memo || '',
-      dates: w.dates || [],
-      workers,
-    });
+    const result = await call({site, workDesc, address, contact, phone, memo, dates, workers});
     bc.innerHTML = `<div style="font-size:14px;line-height:1.85;color:var(--text);white-space:pre-wrap">${result.data.briefing}</div>`;
     if (!result.data.isPremium) {
       bc.innerHTML += `<div style="margin-top:14px;padding:10px 14px;background:var(--bg);border-radius:10px;font-size:11px;color:var(--muted);text-align:center">이번 달 무료 체험 사용 완료 · 프리미엄에서 무제한 이용</div>`;
