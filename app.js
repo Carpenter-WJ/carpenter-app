@@ -2811,16 +2811,25 @@ function renderMemberStats() {
 
 function renderIncomeChart() {
   const months=[];
-  const monthCount = isPremium ? 12 : 3;
-  for(let i=monthCount-1;i>=0;i--){
-    let y=statY, m=statM-i;
-    if(m<0){m+=12;y--;}
-    const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
-      .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
-    months.push({y,m,wage,lbl:`${m+1}월`});
+  if(isPremium){
+    // 프리미엄: statY 연도 전체 1~12월 고정
+    for(let m=0;m<12;m++){
+      const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}))
+        .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
+      months.push({y:statY,m,wage,lbl:`${m+1}월`});
+    }
+  } else {
+    // 무료: 최근 3개월 (statM 기준)
+    for(let i=2;i>=0;i--){
+      let y=statY, m=statM-i;
+      if(m<0){m+=12;y--;}
+      const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
+        .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
+      months.push({y,m,wage,lbl:`${m+1}월`});
+    }
   }
   const titleEl=document.getElementById('chartTitle');
-  if(titleEl) titleEl.textContent=`최근 ${monthCount}개월 수입 추이`;
+  if(titleEl) titleEl.textContent=isPremium?`${statY}년 월별 수입 추이`:'최근 3개월 수입 추이';
   const max=Math.max(...months.map(x=>x.wage),1);
   const chartH=90,padB=32;
   const barW=isPremium?20:64, gap=isPremium?5:20;
