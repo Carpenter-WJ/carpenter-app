@@ -59,7 +59,9 @@ let _notifListener = null;
 const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
-let isPremium = false; // 결제 연동 시 교체
+let premiumTier = null;    // null | 'personal' | 'leader'
+let isPremium = false;     // premiumTier !== null (개인 + 팀장 공통 기능 게이트)
+let isPremiumLeader = false; // premiumTier === 'leader' (팀장 전용 기능 게이트)
 let guestUsageThisMonth = 0; // 이번 달 직접 입력 사용 횟수 (무료 월 2회)
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
@@ -419,7 +421,7 @@ async function loadTeamData() {
     }
   } catch(e) { console.warn('개인 날일 기록 로드 오류:', e.message); }
   // 프리미엄 팀장: maxMembers 자동 업그레이드
-  if (isPremium && isLeader && teamInfo && teamInfo.maxMembers <= 5) {
+  if (isPremiumLeader && isLeader && teamInfo && teamInfo.maxMembers <= 5) {
     try {
       await teamRef().update({ maxMembers: 20 });
       teamInfo.maxMembers = 20;
@@ -477,7 +479,9 @@ async function loadData() {
       userDisplayName = currentUser.displayName || '';
       if (userDisplayName) userRef.set({ customName: userDisplayName }, { merge: true });
     }
-    isPremium = userData.isPremium || false;
+    premiumTier = userData.premiumTier || null;
+    isPremium = premiumTier !== null;
+    isPremiumLeader = premiumTier === 'leader';
     const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
     guestUsageThisMonth = (userData.guestUsage || {})[_mk] || 0;
     const teamId = userData.teamId || null;
@@ -850,7 +854,7 @@ async function approveJoinRequest(uid) {
   if (teamRole !== 'leader') return;
   const req = joinRequests.find(r => r.id === uid);
   if (!req) return;
-  if (!isPremium && teamInfo.memberCount >= teamInfo.maxMembers) { alert('팀 정원이 가득 찼습니다.'); return; }
+  if (!isPremiumLeader && teamInfo.memberCount >= teamInfo.maxMembers) { alert('팀 정원이 가득 찼습니다.'); return; }
   try {
     const t = teamRef();
     const batch = fsdb.batch();
@@ -1154,7 +1158,7 @@ function renderMemberList() {
   const subtitleEl = document.getElementById('teamMembersSubtitle');
   const renameBtn = document.getElementById('teamRenameBtn');
   if (titleEl && teamInfo) titleEl.textContent = teamInfo.name || '팀원 목록';
-  const maxLabel = isPremium && teamRole === 'leader' ? '무제한' : (teamInfo?.maxMembers || 3) + '명';
+  const maxLabel = isPremiumLeader ? '무제한' : (teamInfo?.maxMembers || 3) + '명';
   if (subtitleEl) subtitleEl.textContent = `팀원 ${teamMembers.length}명 / ${maxLabel}`;
   if (renameBtn) renameBtn.style.display = teamRole === 'leader' ? '' : 'none';
   const wrap = document.getElementById('teamMemberList');
@@ -1265,7 +1269,7 @@ function renderTeamSettings() {
       <div class="set-icon" style="background:rgba(0,122,255,.12)">👥</div>
       <div class="set-text">
         <div class="set-item-lbl">${teamInfo.name}</div>
-        <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${isPremium && teamRole === 'leader' ? '무제한' : teamInfo.maxMembers}명</div>
+        <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${isPremiumLeader ? '무제한' : teamInfo.maxMembers}명</div>
       </div>
       <span style="color:var(--muted);font-size:18px">›</span>
     </div>
@@ -1715,7 +1719,7 @@ function renderMemberWageList() {
       <select class="mw-unit">${unitOpts}</select>
     </div>`).join('');
   const _guestRemaining = Math.max(0, 2 - guestUsageThisMonth);
-  if (isPremium) {
+  if (isPremiumLeader) {
     html += `<button type="button" onclick="addGuestRow()" style="margin-top:10px;width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;font-weight:600">+ 직접 입력 추가</button>`;
   } else if (_guestRemaining > 0) {
     html += `<button type="button" onclick="addGuestRow()" style="margin-top:10px;width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;font-weight:600">+ 직접 입력 추가 <span style="font-size:11px">(이번 달 ${_guestRemaining}회 남음)</span></button>`;
@@ -1725,7 +1729,7 @@ function renderMemberWageList() {
   document.getElementById('memberWageList').innerHTML = html;
 }
 function addGuestRow() {
-  if (!isPremium && guestUsageThisMonth >= 2) { openOv('premUpgradeOv'); return; }
+  if (!isPremiumLeader && guestUsageThisMonth >= 2) { openOv('premUpgradeOv'); return; }
   const unitOpts=[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(v=>`<option value="${v}"${v===1?' selected':''}>${v}품</option>`).join('');
   const row=document.createElement('div');
   row.className='mw-row mw-guest-row';
@@ -2182,7 +2186,7 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
 
   // 무료 사용자 직접 입력 카운터 증가
   const _guestCount = members.filter(m => !m.uid).length;
-  if (!isPremium && _guestCount > 0) {
+  if (!isPremiumLeader && _guestCount > 0) {
     const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
     guestUsageThisMonth += _guestCount;
     fsdb.collection('users').doc(currentUser.uid).set(
@@ -2986,13 +2990,16 @@ function printReport() {
   .s-unpaid{background:#fff3e0;color:#e65100;}
   .s-pending{background:#f5f5f5;color:#888;}
   .doc-footer{margin-top:52px;padding-top:16px;border-top:1px solid #ebebeb;font-size:11px;color:#ccc;text-align:center;letter-spacing:0.5px;}
+  .close-btn{position:fixed;top:16px;right:20px;z-index:1000;background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
   @media print{
     body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     @page{margin:15mm 18mm;size:A4;}
+    .close-btn{display:none;}
   }
 </style>
 </head>
 <body>
+<button class="close-btn" onclick="window.close()">✕ 닫기</button>
 
 <div class="doc-header">
   <div>
@@ -3132,7 +3139,7 @@ function renderStat() {
   if(exportEl) exportEl.style.display=isPremium?'':'none';
   if(premEl) premEl.style.display=isPremium?'none':'';
   const wageStmtBtnEl=document.getElementById('wageStmtBtn');
-  if(wageStmtBtnEl) wageStmtBtnEl.style.display=(isPremium&&dataMode==='team'&&teamRole==='leader')?'':'none';
+  if(wageStmtBtnEl) wageStmtBtnEl.style.display=(isPremiumLeader&&dataMode==='team'&&teamRole==='leader')?'':'none';
 
   // 프리미엄 분석 섹션
   const premAnalysisEl = document.getElementById('premAnalysis');
@@ -3475,14 +3482,17 @@ function printWageStatement() {
   .grand-label{font-size:13px;color:#aaa;}
   .grand-value{font-size:24px;font-weight:800;letter-spacing:-0.5px;}
   .doc-footer{margin-top:52px;padding-top:16px;border-top:1px solid #ebebeb;font-size:11px;color:#ccc;text-align:center;letter-spacing:0.5px;}
+  .close-btn{position:fixed;top:16px;right:20px;z-index:1000;background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
   @media print{
     body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     @page{margin:15mm 18mm;size:A4;}
     .member-block{page-break-inside:avoid;}
+    .close-btn{display:none;}
   }
 </style>
 </head>
 <body>
+<button class="close-btn" onclick="window.close()">✕ 닫기</button>
 <div class="doc-header">
   <div>
     <div class="doc-brand">목수일지</div>

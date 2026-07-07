@@ -27,7 +27,7 @@ exports.generateSiteBriefing = onCall({
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   const userData = userSnap.exists ? userSnap.data() : {};
-  const isPremium = userData.isPremium || false;
+  const isPremium = userData.premiumTier === 'leader';
 
   if (!isPremium) {
     const usedThisMonth = (userData.aiCalls || {})[monthKey] || 0;
