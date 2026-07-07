@@ -460,14 +460,16 @@ async function loadData() {
     const userRef = fsdb.collection('users').doc(currentUser.uid);
     const userDoc = await userRef.get();
     // 닉네임 로드 — customName 우선, 없으면 구글 이름으로 초기화
-    const savedName = userDoc.exists ? userDoc.data().customName : null;
+    const userData = userDoc.exists ? userDoc.data() : {};
+    const savedName = userData.customName || null;
     if (savedName) {
       userDisplayName = savedName;
     } else {
       userDisplayName = currentUser.displayName || '';
       if (userDisplayName) userRef.set({ customName: userDisplayName }, { merge: true });
     }
-    const teamId = userDoc.exists ? userDoc.data().teamId : null;
+    isPremium = userData.isPremium || false;
+    const teamId = userData.teamId || null;
 
     if (teamId) {
       dataMode = 'team';
