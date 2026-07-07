@@ -60,6 +60,7 @@ const TODAY = new Date();
 let calY = TODAY.getFullYear(), calM = TODAY.getMonth();
 let statY = TODAY.getFullYear(), statM = TODAY.getMonth();
 let isPremium = false; // 결제 연동 시 교체
+let guestUsageThisMonth = 0; // 이번 달 직접 입력 사용 횟수 (무료 월 2회)
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
 let workSearch = '';
@@ -421,13 +422,13 @@ async function loadTeamData() {
 }
 
 function memberName(uid) {
-  if (!uid) return '수기 인력';
+  if (!uid) return '직접 입력';
   if (currentUser && uid === currentUser.uid) return '나';
   const m = teamMembers.find(x => x.uid === uid);
   return m ? (m.customName || m.displayName || '이름 없음') : '팀원';
 }
 function workerLabel(w) {
-  if (w.isGuest) return w.guestName || '수기 인력';
+  if (w.isGuest) return w.guestName || '직접 입력';
   return memberName(w.ownerUid || w.createdBy);
 }
 
@@ -469,6 +470,8 @@ async function loadData() {
       if (userDisplayName) userRef.set({ customName: userDisplayName }, { merge: true });
     }
     isPremium = userData.isPremium || false;
+    const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
+    guestUsageThisMonth = (userData.guestUsage || {})[_mk] || 0;
     const teamId = userData.teamId || null;
 
     if (teamId) {
@@ -1702,14 +1705,18 @@ function renderMemberWageList() {
       <span style="font-size:11px;color:var(--muted)">원</span>
       <select class="mw-unit">${unitOpts}</select>
     </div>`).join('');
+  const _guestRemaining = Math.max(0, 2 - guestUsageThisMonth);
   if (isPremium) {
-    html += `<button type="button" onclick="addGuestRow()" style="margin-top:10px;width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;font-weight:600">+ 수기 인력 추가</button>`;
+    html += `<button type="button" onclick="addGuestRow()" style="margin-top:10px;width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;font-weight:600">+ 직접 입력 추가</button>`;
+  } else if (_guestRemaining > 0) {
+    html += `<button type="button" onclick="addGuestRow()" style="margin-top:10px;width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;font-weight:600">+ 직접 입력 추가 <span style="font-size:11px">(이번 달 ${_guestRemaining}회 남음)</span></button>`;
   } else {
-    html += `<div onclick="openOv('premUpgradeOv')" style="margin-top:10px;width:100%;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;text-align:center">🔒 수기 인력 추가 (프리미엄)</div>`;
+    html += `<div onclick="openOv('premUpgradeOv')" style="margin-top:10px;width:100%;border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);cursor:pointer;text-align:center">🔒 직접 입력 (이번 달 한도 초과 · 프리미엄 무제한)</div>`;
   }
   document.getElementById('memberWageList').innerHTML = html;
 }
 function addGuestRow() {
+  if (!isPremium && guestUsageThisMonth >= 2) { openOv('premUpgradeOv'); return; }
   const unitOpts=[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(v=>`<option value="${v}"${v===1?' selected':''}>${v}품</option>`).join('');
   const row=document.createElement('div');
   row.className='mw-row mw-guest-row';
@@ -2109,7 +2116,7 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
     const unit=Number(row.querySelector('.mw-unit').value)||1;
     if(check.value.startsWith('guest_')){
       const guestName=(row.querySelector('.mw-guest-name')?.value||'').trim();
-      if(!guestName){alert('수기 인력의 이름을 입력해주세요.');return;}
+      if(!guestName){alert('직접 입력 인력의 이름을 입력해주세요.');return;}
       if(!wage){alert(`${guestName}의 일당을 입력해주세요.`);return;}
       members.push({uid:null,guestName,wage,unit,name:guestName});
     } else {
@@ -2163,6 +2170,17 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
     if(m.uid&&m.uid!==currentUser.uid) createNotification(m.uid,'wage_added',wId,site).catch(()=>{});
   });
   try{await batch.commit();}catch(e){alert(`저장 오류\n${e.message}`);return;}
+
+  // 무료 사용자 직접 입력 카운터 증가
+  const _guestCount = members.filter(m => !m.uid).length;
+  if (!isPremium && _guestCount > 0) {
+    const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
+    guestUsageThisMonth += _guestCount;
+    fsdb.collection('users').doc(currentUser.uid).set(
+      {guestUsage: {[_mk]: firebase.firestore.FieldValue.increment(_guestCount)}},
+      {merge: true}
+    ).catch(()=>{});
+  }
 
   DB.works.push(...newWorks);
   DB.works.sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''));
