@@ -1614,7 +1614,72 @@ function openWorkOv(workId, prefillDate) {
   }
   renderColorChips();
   renderDateChips();
+  // AI 브리핑 버튼: 팀장이 기존 현장 수정할 때만 표시
+  const aiBriefingFg = document.getElementById('aiBriefingFg');
+  if (aiBriefingFg) {
+    aiBriefingFg.style.display = (workId && dataMode === 'team' && teamRole === 'leader') ? '' : 'none';
+  }
   openOv('workOv');
+}
+
+async function generateBriefing() {
+  const workId = document.getElementById('editWorkId').value;
+  if (!workId) return;
+  const w = DB.works.find(x => x.id === workId);
+  if (!w) return;
+
+  // 같은 jobId를 가진 모든 인원 수집
+  const jobWorkers = w.jobId
+    ? DB.works.filter(x => x.jobId === w.jobId && !x.isPersonal)
+    : [w];
+  const workers = jobWorkers.map(jw => ({
+    name: workerLabel(jw),
+    wage: jw.wage,
+    unit: jw.unit || 1,
+  }));
+
+  const bc = document.getElementById('briefingContent');
+  const copyBtn = document.getElementById('briefingCopyBtn');
+  bc.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--muted);font-size:14px">브리핑 생성 중...</div>';
+  copyBtn.style.display = 'none';
+  openOv('briefingOv');
+
+  try {
+    const fn = firebase.app().functions('asia-northeast3');
+    const call = fn.httpsCallable('generateSiteBriefing');
+    const result = await call({
+      site: w.site,
+      workDesc: w.workDesc || '',
+      address: w.address || '',
+      contact: w.contact || '',
+      phone: w.phone || '',
+      memo: w.memo || '',
+      dates: w.dates || [],
+      workers,
+    });
+    bc.innerHTML = `<div style="font-size:14px;line-height:1.85;color:var(--text);white-space:pre-wrap">${result.data.briefing}</div>`;
+    if (!isPremium) {
+      bc.innerHTML += `<div style="margin-top:14px;padding:10px 14px;background:var(--bg);border-radius:10px;font-size:11px;color:var(--muted);text-align:center">이번 달 무료 체험 사용 완료 · 프리미엄에서 무제한 이용</div>`;
+    }
+    copyBtn.style.display = '';
+  } catch (err) {
+    if (err.code === 'resource-exhausted') {
+      bc.innerHTML = `<div style="text-align:center;padding:24px 0">
+        <div style="font-size:36px;margin-bottom:12px">🔒</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px">이번 달 무료 체험 완료</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.75">월 1회 무료로 체험할 수 있어요<br>더 자주 사용하려면 프리미엄이 필요해요</div>
+      </div>`;
+    } else {
+      bc.innerHTML = `<div style="text-align:center;padding:24px 0;font-size:14px;color:var(--red)">오류가 발생했어요<br><span style="font-size:12px;color:var(--muted)">${err.message || ''}</span></div>`;
+    }
+  }
+}
+
+function copyBriefing() {
+  const bc = document.getElementById('briefingContent');
+  const text = (bc.innerText || bc.textContent || '').trim();
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => showToast('복사됐어요'));
 }
 
 let guestCounter = 0;

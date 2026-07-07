@@ -397,6 +397,11 @@
       <button class="add-date-btn" onclick="openDatePickOv()">+ 날짜 추가</button>
     </div>
     <button class="btn-pri" onclick="saveWork()">저장</button>
+    <div id="aiBriefingFg" style="display:none;margin-top:10px">
+      <button onclick="generateBriefing()" style="width:100%;padding:13px;background:linear-gradient(135deg,#6c3fff,#a855f7);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:18px">✨</span> AI 현장 브리핑 생성
+      </button>
+    </div>
   </div>
 </div>
 
@@ -476,6 +481,22 @@
       <input type="text" id="inPayNote" placeholder="예) 세금공제, 식대 포함 등">
     </div>
     <button class="btn-pri" onclick="savePayment()">저장</button>
+  </div>
+</div>
+
+<!-- AI 현장 브리핑 결과 -->
+<div class="ov" id="briefingOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:22px">✨</span>
+        <div class="sh-title" style="margin-bottom:0">AI 현장 브리핑</div>
+      </div>
+      <button onclick="closeOv('briefingOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
+    <div id="briefingContent" style="min-height:80px"></div>
+    <button id="briefingCopyBtn" onclick="copyBriefing()" class="btn-out" style="display:none;margin-top:14px">텍스트 복사</button>
   </div>
 </div>
 
@@ -596,6 +617,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyCciwD5eqMii9pL1XcvMmZEe6hyfIzbL84",
