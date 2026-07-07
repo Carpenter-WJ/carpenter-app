@@ -1658,7 +1658,7 @@ async function generateBriefing() {
       workers,
     });
     bc.innerHTML = `<div style="font-size:14px;line-height:1.85;color:var(--text);white-space:pre-wrap">${result.data.briefing}</div>`;
-    if (!isPremium) {
+    if (!result.data.isPremium) {
       bc.innerHTML += `<div style="margin-top:14px;padding:10px 14px;background:var(--bg);border-radius:10px;font-size:11px;color:var(--muted);text-align:center">이번 달 무료 체험 사용 완료 · 프리미엄에서 무제한 이용</div>`;
     }
     copyBtn.style.display = '';
