@@ -172,6 +172,10 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       인건비 명세서
     </button>
+    <button class="export-btn" onclick="openTaxEstOv()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      세금 계산기
+    </button>
   </div>
   <div class="prem-section" id="premSection">
     <div class="prem-section-title">곧 출시</div>
@@ -529,6 +533,27 @@
       <div style="background:var(--pri);color:#fff;border-radius:14px;padding:15px;font-size:15px;font-weight:700;opacity:0.45;margin-bottom:12px">준비 중이에요</div>
       <button onclick="closeOv('premUpgradeOv')" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px;font-size:15px;font-weight:600;color:var(--muted);cursor:pointer">닫기</button>
     </div>
+  </div>
+</div>
+
+<!-- 세금 예상 계산기 오버레이 -->
+<div class="ov" id="taxEstOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="sh-title" style="margin-bottom:0;font-size:16px">세금 예상 계산기</div>
+      <button onclick="closeOv('taxEstOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
+    <div style="background:rgba(255,149,0,.1);border:1px solid rgba(255,149,0,.3);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.6">
+      ⚠️ 이 계산은 <b>대략적인 예상치</b>예요. 인적공제·다른 소득 유무 등 개인 사정에 따라 실제 세액과 차이가 날 수 있으니, 정확한 신고는 세무사 상담을 권장해요.
+    </div>
+    <div class="fg">
+      <label>계산 연도</label>
+      <select id="taxEstYear" onchange="renderTaxEstFields()"></select>
+    </div>
+    <div id="taxEstFields"></div>
+    <button class="btn-pri" style="margin-top:14px" onclick="calcTaxEstimate()">계산하기</button>
+    <div id="taxEstResult" style="margin-top:18px"></div>
   </div>
 </div>
 

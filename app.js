@@ -3597,6 +3597,127 @@ document.querySelectorAll('.ov').forEach(o=>{
   });
 });
 
+// ── 세금 예상 계산기 ──
+// 2026년 기준 종합소득세 누진세율표 (매년 바뀔 수 있으니 국세청 고시 확인 필요)
+const TAX_BRACKETS = [
+  {max:14000000, rate:0.06, deduct:0},
+  {max:50000000, rate:0.15, deduct:1260000},
+  {max:88000000, rate:0.24, deduct:5760000},
+  {max:150000000, rate:0.35, deduct:15440000},
+  {max:300000000, rate:0.38, deduct:19940000},
+  {max:500000000, rate:0.40, deduct:25940000},
+  {max:1000000000, rate:0.42, deduct:35940000},
+  {max:Infinity, rate:0.45, deduct:65940000},
+];
+function calcIncomeTax(base) {
+  if (base <= 0) return 0;
+  const b = TAX_BRACKETS.find(b => base <= b.max);
+  return Math.max(0, base * b.rate - b.deduct);
+}
+function openTaxEstOv() {
+  const yearSel = document.getElementById('taxEstYear');
+  const curY = TODAY.getFullYear();
+  const years = [...new Set(DB.works.flatMap(w => (w.dates||[]).map(d => parsD(d).y)))].sort((a,b)=>b-a);
+  if (!years.includes(curY)) years.unshift(curY);
+  yearSel.innerHTML = years.map(y => `<option value="${y}"${y===curY?' selected':''}>${y}년</option>`).join('');
+  renderTaxEstFields();
+  document.getElementById('taxEstResult').innerHTML = '';
+  openOv('taxEstOv');
+}
+function renderTaxEstFields() {
+  const isLeaderMode = dataMode === 'team' && teamRole === 'leader';
+  const y = Number(document.getElementById('taxEstYear').value || TODAY.getFullYear());
+  const fields = document.getElementById('taxEstFields');
+  if (isLeaderMode) {
+    const laborCost = DB.works.filter(w=>!w.isPersonal && w.wage!=null).reduce((s,w)=>{
+      const cnt=(w.dates||[]).filter(d=>parsD(d).y===y).length;
+      return s + cnt*Number(w.wage)*Number(w.unit||1);
+    },0);
+    fields.innerHTML = `
+      <div class="fg">
+        <label>${y}년 현장 매출(도급비) 총액</label>
+        <input type="number" id="taxEstRevenue" placeholder="예) 80000000" inputmode="numeric">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">앱에 없는 정보라 직접 입력해주세요</div>
+      </div>
+      <div class="fg">
+        <label>${y}년 인건비 지출 (자동)</label>
+        <div style="font-size:16px;font-weight:700;padding:10px 0;color:var(--text)">${fmtW(laborCost)}</div>
+      </div>
+      <div class="fg">
+        <label>기타 경비 <span style="font-weight:400;font-size:11px;color:var(--muted)">(재료비·유류비 등, 선택)</span></label>
+        <input type="number" id="taxEstOtherExp" placeholder="0" inputmode="numeric">
+      </div>
+      <div class="fg">
+        <label>기본공제(본인+부양가족)</label>
+        <input type="number" id="taxEstDeduction" value="1500000" inputmode="numeric">
+      </div>`;
+    fields.dataset.laborCost = laborCost;
+  } else {
+    let gross=0, withheld=0;
+    DB.works.filter(w=>w.wage!=null).forEach(w=>{
+      const cnt=(w.dates||[]).filter(d=>parsD(d).y===y).length;
+      if(!cnt) return;
+      const u=Number(w.unit||1);
+      const g = cnt*Number(w.wage)*u;
+      gross += g;
+      if (w.taxWithheld) withheld += g - cnt*netWage(w)*u;
+    });
+    fields.innerHTML = `
+      <div class="fg">
+        <label>${y}년 총수입금액 (자동)</label>
+        <div style="font-size:16px;font-weight:700;padding:10px 0;color:var(--text)">${fmtW(gross)}</div>
+      </div>
+      <div class="fg">
+        <label>${y}년 기납부세액 (자동, 3.3% 원천징수분)</label>
+        <div style="font-size:16px;font-weight:700;padding:10px 0;color:var(--text)">${fmtW(withheld)}</div>
+      </div>
+      <div class="fg">
+        <label>필요경비율 (%) <span style="font-weight:400;font-size:11px;color:var(--muted)">인적용역 기본 64.1%</span></label>
+        <input type="number" id="taxEstExpRate" value="64.1" step="0.1" inputmode="decimal">
+      </div>
+      <div class="fg">
+        <label>기본공제(본인+부양가족)</label>
+        <input type="number" id="taxEstDeduction" value="1500000" inputmode="numeric">
+      </div>`;
+    fields.dataset.gross = gross;
+    fields.dataset.withheld = withheld;
+  }
+}
+function calcTaxEstimate() {
+  const isLeaderMode = dataMode === 'team' && teamRole === 'leader';
+  const fields = document.getElementById('taxEstFields');
+  const deduction = Number(document.getElementById('taxEstDeduction').value) || 0;
+  let incomeAmt, withheldAmt = 0;
+  if (isLeaderMode) {
+    const revenue = Number(document.getElementById('taxEstRevenue').value) || 0;
+    if (!revenue) { alert('현장 매출을 입력해주세요.'); return; }
+    const laborCost = Number(fields.dataset.laborCost || 0);
+    const otherExp = Number(document.getElementById('taxEstOtherExp').value) || 0;
+    incomeAmt = Math.max(0, revenue - laborCost - otherExp);
+  } else {
+    const expRate = Number(document.getElementById('taxEstExpRate').value) || 0;
+    const gross = Number(fields.dataset.gross || 0);
+    withheldAmt = Number(fields.dataset.withheld || 0);
+    incomeAmt = Math.max(0, gross * (1 - expRate/100));
+  }
+  const taxBase = Math.max(0, incomeAmt - deduction);
+  const incomeTax = calcIncomeTax(taxBase);
+  const totalTax = Math.round(incomeTax * 1.1); // 지방소득세 10% 포함
+  const diff = withheldAmt - totalTax;
+  document.getElementById('taxEstResult').innerHTML = `
+    <div style="background:var(--bg-sub);border-radius:14px;padding:16px 18px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);padding:4px 0"><span>소득금액</span><span>${fmtW(incomeAmt)}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);padding:4px 0"><span>과세표준</span><span>${fmtW(taxBase)}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);padding-bottom:10px;margin-bottom:8px;border-bottom:1px solid var(--border)"><span>예상 세액 (지방세 포함)</span><span style="font-weight:700;color:var(--text)">${fmtW(totalTax)}</span></div>
+      ${isLeaderMode ? '' : `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px">
+        <span style="font-size:13px;color:var(--muted)">${diff>=0?'예상 환급액':'예상 추가납부액'}</span>
+        <span style="font-size:19px;font-weight:800;color:${diff>=0?'var(--green)':'var(--red)'}">${fmtW(Math.abs(diff))}</span>
+      </div>`}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">⚠️ 참고용 추정치입니다. 실제 종합소득세는 개인 사정에 따라 달라질 수 있어요.</div>`;
+}
+
 // ── Firebase 인증 상태 감지 ──
 auth.getRedirectResult().catch(function(e){
   if (!e || !e.message || e.message.includes('missing initial state')) return;
