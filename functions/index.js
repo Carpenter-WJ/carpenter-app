@@ -1,9 +1,82 @@
-const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const Anthropic = require('@anthropic-ai/sdk');
 
 initializeApp();
+
+function icsEscape(text) {
+  return String(text || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+function nextDay(ds) {
+  const d = new Date(ds + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+exports.calendarFeed = onRequest({region: 'asia-northeast3'}, async (req, res) => {
+  const uid = req.query.uid;
+  const token = req.query.token;
+  if (!uid || !token) {
+    res.status(400).send('잘못된 요청입니다.');
+    return;
+  }
+
+  const db = getFirestore();
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const userData = userSnap.exists ? userSnap.data() : null;
+
+  if (!userData || !userData.calendarFeedToken || userData.calendarFeedToken !== token) {
+    res.status(403).send('유효하지 않은 구독 링크입니다.');
+    return;
+  }
+
+  const works = [];
+  const personalSnap = await userRef.collection('works').get();
+  personalSnap.docs.forEach((d) => works.push(d.data()));
+
+  if (userData.teamId) {
+    const teamRef = db.collection('teams').doc(userData.teamId);
+    const [wagesSnap, jobsSnap] = await Promise.all([
+      teamRef.collection('wages').where('ownerUid', '==', uid).get(),
+      teamRef.collection('jobs').get(),
+    ]);
+    const jobById = {};
+    jobsSnap.docs.forEach((d) => { jobById[d.id] = d.data(); });
+    wagesSnap.docs.forEach((d) => {
+      const wg = d.data();
+      const job = jobById[wg.jobId] || {};
+      works.push({site: job.site || '현장', dates: wg.dates || [], workDesc: wg.workDesc || ''});
+    });
+  }
+
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//목수일지//KO',
+    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:목수일지 작업일정',
+    'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
+  ];
+  works.forEach((w) => {
+    (w.dates || []).forEach((ds) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return;
+      const dtStart = ds.replace(/-/g, '');
+      const eventUid = `${ds}-${w.site || ''}`.replace(/[^a-zA-Z0-9-]/g, '') + `-${uid}@moksujilji`;
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:${eventUid}`);
+      lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`);
+      lines.push(`DTSTART;VALUE=DATE:${dtStart}`);
+      lines.push(`DTEND;VALUE=DATE:${nextDay(ds)}`);
+      lines.push(`SUMMARY:${icsEscape(w.site || '현장')}${w.workDesc ? icsEscape(' - ' + w.workDesc) : ''}`);
+      lines.push('END:VEVENT');
+    });
+  });
+  lines.push('END:VCALENDAR');
+
+  res.set('Content-Type', 'text/calendar; charset=utf-8');
+  res.set('Cache-Control', 'private, max-age=3600');
+  res.send(lines.join('\r\n'));
+});
 
 exports.generateSiteBriefing = onCall({
   region: 'asia-northeast3',

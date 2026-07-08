@@ -63,6 +63,7 @@ let premiumTier = null;    // null | 'personal' | 'leader'
 let isPremium = false;     // premiumTier !== null (개인 + 팀장 공통 기능 게이트)
 let isPremiumLeader = false; // premiumTier === 'leader' (팀장 전용 기능 게이트)
 let guestUsageThisMonth = 0; // 이번 달 직접 입력 사용 횟수 (무료 월 2회)
+let calendarFeedToken = null; // 캘린더 구독(webcal) 링크용 토큰
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
 let wageStmtY = TODAY.getFullYear(), wageStmtM = TODAY.getMonth();
@@ -493,6 +494,7 @@ async function loadData() {
     isPremiumLeader = premiumTier === 'leader';
     const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
     guestUsageThisMonth = (userData.guestUsage || {})[_mk] || 0;
+    calendarFeedToken = userData.calendarFeedToken || null;
     const teamId = userData.teamId || null;
 
     if (teamId) {
@@ -3716,6 +3718,43 @@ function calcTaxEstimate() {
       </div>`}
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">⚠️ 참고용 추정치입니다. 실제 종합소득세는 개인 사정에 따라 달라질 수 있어요.</div>`;
+}
+
+// ── 캘린더 구독(webcal) ──
+const CALENDAR_FEED_BASE = 'https://asia-northeast3-moksuilji.cloudfunctions.net/calendarFeed';
+function genFeedToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+function calendarFeedUrl(scheme) {
+  return `${scheme}://asia-northeast3-moksuilji.cloudfunctions.net/calendarFeed?uid=${currentUser.uid}&token=${calendarFeedToken}`;
+}
+async function openCalendarFeedOv() {
+  if (!calendarFeedToken) {
+    calendarFeedToken = genFeedToken();
+    try {
+      await fsdb.collection('users').doc(currentUser.uid).set({calendarFeedToken}, {merge: true});
+    } catch (e) { alert('구독 링크 생성 중 오류가 발생했어요: ' + e.message); return; }
+  }
+  renderCalendarFeedOv();
+  openOv('calendarFeedOv');
+}
+function renderCalendarFeedOv() {
+  const el = document.getElementById('calendarFeedLink');
+  if (el) el.textContent = calendarFeedUrl('webcal');
+}
+function copyCalendarFeedLink() {
+  navigator.clipboard.writeText(calendarFeedUrl('https')).then(() => showToast('링크가 복사됐어요'));
+}
+async function regenCalendarFeedToken() {
+  if (!confirm('구독 링크를 재발급하면 기존에 등록해둔 캘린더 구독은 더 이상 갱신되지 않아요. 계속할까요?')) return;
+  calendarFeedToken = genFeedToken();
+  try {
+    await fsdb.collection('users').doc(currentUser.uid).set({calendarFeedToken}, {merge: true});
+    renderCalendarFeedOv();
+    showToast('링크가 재발급됐어요');
+  } catch (e) { alert('재발급 중 오류가 발생했어요: ' + e.message); }
 }
 
 // ── Firebase 인증 상태 감지 ──
