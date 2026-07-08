@@ -1494,6 +1494,17 @@ function renderCal() {
       wkBars.push({site:bar.site,color:bar.color,colStart:cs,colSpan:ce-cs+1,clickDs:wk[cs].ds,status:bar.status,ownerUid:bar.ownerUid,isPersonal:bar.isPersonal});
     });
 
+    // 컬럼 시작 순으로 정렬 후, 겹치지 않는 범위끼리 최상단 행부터 채우도록 배정
+    // (그리드 auto-placement에 맡기면 DOM 순서에 따라 계단식으로 밀리는 문제가 있어 직접 계산)
+    wkBars.sort((a,b)=>a.colStart-b.colStart||b.colSpan-a.colSpan);
+    const rowEnds=[];
+    wkBars.forEach(bar=>{
+      let r=0;
+      while(rowEnds[r]!==undefined&&rowEnds[r]>=bar.colStart) r++;
+      rowEnds[r]=bar.colStart+bar.colSpan-1;
+      bar.row=r;
+    });
+
     if(wkBars.length){
       html+='<div class="cal-events">';
       wkBars.forEach(bar=>{
@@ -1503,7 +1514,7 @@ function renderCal() {
         const isOthers=dataMode==='team'&&teamRole==='leader'&&!bar.isPersonal&&bar.ownerUid&&bar.ownerUid!==currentUser.uid;
         const ownerLabel=isOthers?` · ${memberName(bar.ownerUid)}`:'';
         const othersStyle=isOthers?';opacity:0.75;border-left-style:dashed':'';
-        html+=`<div class="cbar" style="grid-column:${bar.colStart+1}/span ${bar.colSpan};background:${c.bg};border-left-color:${c.border};color:${c.border}${planStyle}${othersStyle}" onclick="openDayOv('${bar.clickDs}')">${bar.site}${ownerLabel}${isPlanned?' 예정':''}</div>`;
+        html+=`<div class="cbar" style="grid-column:${bar.colStart+1}/span ${bar.colSpan};grid-row:${bar.row+1};background:${c.bg};border-left-color:${c.border};color:${c.border}${planStyle}${othersStyle}" onclick="openDayOv('${bar.clickDs}')">${bar.site}${ownerLabel}${isPlanned?' 예정':''}</div>`;
       });
       html+='</div>';
     }
