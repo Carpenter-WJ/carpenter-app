@@ -238,6 +238,14 @@
       </div>
       <input type="number" id="defWageInp" class="set-item-input" placeholder="미설정" oninput="saveDefWage(this.value)">
     </div>
+    <div class="set-item">
+      <div class="set-icon" style="background:rgba(231,76,60,.12)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E74C3C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+      <div class="set-text">
+        <div class="set-item-lbl">인적공제 3.3% 기본값</div>
+        <div class="set-item-sub">새 현장 추가 시 공제 체크 자동 적용</div>
+      </div>
+      <label class="sw-wrap"><input type="checkbox" id="defTaxToggle" onchange="saveDefTax(this.checked)"><span class="sw"></span></label>
+    </div>
   </div>
 
   <!-- 팀 -->
@@ -334,6 +342,7 @@
     <div class="fg" id="wageFg">
       <label>일당 (원)</label>
       <input type="number" id="inWage" placeholder="0" inputmode="numeric">
+      <label class="tax-chk-label"><input type="checkbox" id="inTaxWithheld">인적공제 3.3% 공제 후 받음</label>
     </div>
     <div class="fg" id="wageHiddenNote" style="display:none">
       <label>일당 (원)</label>
@@ -380,6 +389,10 @@
         <div class="fg">
           <label>현장 메모</label>
           <input type="text" id="inMemo" placeholder="현관 비번, 주차 방법 등">
+        </div>
+        <div class="fg" id="jobDefaultTaxFg" style="display:none">
+          <label class="tax-chk-label"><input type="checkbox" id="inJobDefaultTax">이 현장은 인적공제 3.3% 기본 적용</label>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">체크하면 이 현장에 새 작업 등록 시 공제가 자동으로 체크돼요</div>
         </div>
         <!-- 팀장 모드: 공개 범위 설정 -->
         <div class="fg" id="visibilityFg" style="display:none">

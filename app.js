@@ -103,13 +103,13 @@ async function saveDailyNote() {
 // ── 현장 자동완성 ──
 function getSiteHistory() {
   if (dataMode === 'team') {
-    return DB.jobs.map(j => ({ site:j.site, address:j.address||'', contact:j.contact||'', phone:j.phone||'', memo:j.memo||'', color:j.color||'orange', workDesc:'' }));
+    return DB.jobs.map(j => ({ site:j.site, address:j.address||'', contact:j.contact||'', phone:j.phone||'', memo:j.memo||'', color:j.color||'orange', workDesc:'', taxWithheld:!!j.defaultTaxWithheld }));
   }
   const seen = new Set();
   return DB.works
     .slice().sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''))
     .filter(w=>{ if(seen.has(w.site)) return false; seen.add(w.site); return true; })
-    .map(w=>({ site:w.site, workDesc:w.workDesc||'', address:w.address||'', contact:w.contact||'', phone:w.phone||'', memo:w.memo||'', color:w.color||'orange' }));
+    .map(w=>({ site:w.site, workDesc:w.workDesc||'', address:w.address||'', contact:w.contact||'', phone:w.phone||'', memo:w.memo||'', color:w.color||'orange', taxWithheld:!!w.taxWithheld }));
 }
 
 let _siteHistory = [];
@@ -135,6 +135,11 @@ function selectSiteHistory(idx) {
   document.getElementById('inContact').value = s.contact;
   document.getElementById('inPhone').value = s.phone;
   document.getElementById('inMemo').value = s.memo;
+  const taxChk = document.getElementById('inTaxWithheld');
+  if (taxChk) taxChk.checked = s.taxWithheld;
+  const jobTaxChk = document.getElementById('inJobDefaultTax');
+  if (jobTaxChk && dataMode === 'team') jobTaxChk.checked = s.taxWithheld;
+  document.querySelectorAll('#memberWageList .mw-tax').forEach(el => el.checked = s.taxWithheld);
   if (s.color) { editColor = s.color; renderColorChips(); }
   document.getElementById('siteDropdown').style.display = 'none';
   if (s.address || s.contact || s.phone || s.memo) toggleInfoSection(true);
@@ -162,9 +167,11 @@ applyTheme();
 
 // ── 기본 일당 ──
 let defaultWage = localStorage.getItem('defaultWage') || '';
+let defaultTaxWithheld = localStorage.getItem('defaultTaxWithheld') === 'true';
 let userDisplayName = ''; // 사용자 설정 닉네임 (구글 이름과 별개)
 let workEntryMode = 'team'; // 팀 모드에서 기록 추가 시 'team' | 'personal'
 function saveDefWage(v) { defaultWage = v; localStorage.setItem('defaultWage', v); }
+function saveDefTax(v) { defaultTaxWithheld = v; localStorage.setItem('defaultTaxWithheld', String(v)); }
 function setWeekSum(v) { showWeekSum = v; localStorage.setItem('showWeekSum', v); renderCal(); }
 
 // ── 설정 탭 렌더 ──
@@ -176,6 +183,8 @@ function renderSet() {
   if(inp) inp.value = defaultWage;
   const wst = document.getElementById('weekSumToggle');
   if(wst) wst.checked = showWeekSum;
+  const dtt = document.getElementById('defTaxToggle');
+  if(dtt) dtt.checked = defaultTaxWithheld;
   const card = document.getElementById('accountCard');
   if(!card) return;
   if(currentUser) {
@@ -271,7 +280,7 @@ async function save() {
         if (w.isPersonal) return; // 개인 날일 기록은 팀 wages에서 제외
         if (!canSeeWage(w)) return;
         batch.set(t.collection('wages').doc(w.id), {
-          jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, isPaid: w.isPaid,
+          jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, taxWithheld: w.taxWithheld||false, isPaid: w.isPaid,
           ownerUid: w.ownerUid || w.createdBy,
           createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -308,7 +317,7 @@ async function saveOneWork(w) {
   if (dataMode === 'team' && !w.isPersonal) {
     if (!canSeeWage(w)) return; // wage 수정 권한 없을 때 skip (job 정보는 saveJobInfo가 처리)
     await teamRef().collection('wages').doc(w.id).set({
-      jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, isPaid: w.isPaid,
+      jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, taxWithheld: w.taxWithheld||false, isPaid: w.isPaid,
       workDesc: w.workDesc || '',
       ownerUid: w.ownerUid || w.createdBy,
       createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -382,7 +391,7 @@ async function loadTeamData() {
       id: d.id, jobId: wg.jobId,
       site: job.site || '(삭제된 현장)', address: job.address, contact: job.contact, phone: job.phone, memo: job.memo, color: job.color,
       jobCreatedBy: job.createdBy,
-      dates: wg.dates, unit: wg.unit, wage: wg.wage, isPaid: wg.isPaid,
+      dates: wg.dates, unit: wg.unit, wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid,
       ownerUid: wg.ownerUid || (!wg.isGuest ? wg.createdBy : null),
       guestName: wg.guestName || null, isGuest: wg.isGuest || false,
       workDesc: wg.workDesc || '', createdBy: wg.createdBy
@@ -616,7 +625,7 @@ async function migrateFromDisbandedTeam(userRef, teamDoc) {
       contact: job.contact || '', phone: job.phone || '',
       memo: job.memo || '', color: job.color || '#007AFF',
       dates: wg.dates || [], unit: wg.unit || 1,
-      wage: wg.wage, isPaid: wg.isPaid || false,
+      wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
       createdBy: wg.createdBy, teamName: tName
     });
   });
@@ -685,8 +694,8 @@ async function migrateToTeam(teamDoc) {
   for (let i = 0; i < DB.works.length; i += 450) {
     const batch = fsdb.batch();
     DB.works.slice(i, i + 450).forEach(w => {
-      const { wage, isPaid, unit, dates, teamName, ...jobFields } = w;
-      batch.set(teamDoc.collection('jobs').doc(w.id), { ...jobFields, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const { wage, isPaid, unit, dates, teamName, taxWithheld, ...jobFields } = w;
+      batch.set(teamDoc.collection('jobs').doc(w.id), { ...jobFields, defaultTaxWithheld: !!taxWithheld, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     await batch.commit();
   }
@@ -694,8 +703,8 @@ async function migrateToTeam(teamDoc) {
   for (let i = 0; i < DB.works.length; i += 450) {
     const batch = fsdb.batch();
     DB.works.slice(i, i + 450).forEach(w => {
-      const { wage, isPaid, unit, dates } = w;
-      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const { wage, isPaid, unit, dates, taxWithheld } = w;
+      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, taxWithheld: !!taxWithheld, isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     await batch.commit();
   }
@@ -1052,7 +1061,7 @@ async function deleteTeam() {
           contact: job.contact || '', phone: job.phone || '',
           memo: job.memo || '', color: job.color || '#007AFF',
           dates: wg.dates || [], unit: wg.unit || 1,
-          wage: wg.wage, isPaid: wg.isPaid || false,
+          wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
           createdBy: wg.createdBy, teamName: tName
         });
       });
@@ -1112,7 +1121,7 @@ async function leaveTeam() {
           contact: job.contact || '', phone: job.phone || '',
           memo: job.memo || '', color: job.color || '#007AFF',
           dates: wg.dates || [], unit: wg.unit || 1,
-          wage: wg.wage, isPaid: wg.isPaid || false,
+          wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
           createdBy: wg.createdBy, teamName: tName
         });
       });
@@ -1199,7 +1208,7 @@ async function removeMember(uid) {
         contact: job.contact || '', phone: job.phone || '',
         memo: job.memo || '', color: job.color || '#007AFF',
         dates: wg.dates || [], unit: wg.unit || 1,
-        wage: wg.wage, isPaid: wg.isPaid || false,
+        wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
         createdBy: wg.createdBy, teamName: tName
       };
     });
@@ -1313,7 +1322,8 @@ function fmtDate(s) {
   const dow=['일','월','화','수','목','금','토'][dowN(y,m,d)];
   return `${String(m+1).padStart(2,'0')}.${String(d).padStart(2,'0')}(${dow})`;
 }
-function expAmt(w) { return w.wage==null ? null : (w.dates||[]).length * Number(w.wage) * Number(w.unit || 1); }
+function netWage(w) { return w.taxWithheld ? Math.floor(Number(w.wage) * 0.967) : Number(w.wage); }
+function expAmt(w) { return w.wage==null ? null : (w.dates||[]).length * netWage(w) * Number(w.unit || 1); }
 function rcvAmt(wId) { return DB.payments.filter(p=>p.workId===wId).reduce((s,p)=>s+Number(p.amount),0); }
 
 function formatDatesShort(dates) {
@@ -1414,7 +1424,7 @@ function renderCal() {
   DB.works.filter(w=>getWorkStatus(w)==='active').forEach(w=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}).length;
     const u=Number(w.unit||1);
-    if(w.wage!=null) mWage+=cnt*Number(w.wage)*u;
+    if(w.wage!=null) mWage+=cnt*netWage(w)*u;
     mUnit+=cnt*u;
   });
   const monthWorks=DB.works.filter(w=>getWorkStatus(w)==='active'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===calY&&p.m===calM;}));
@@ -1523,7 +1533,7 @@ function renderCal() {
     if(showWeekSum){
       const wkWage=DB.works.filter(w=>getWorkStatus(w)==='active'&&w.wage!=null&&!isPayOut(w)).reduce((s,w)=>{
         const cnt=(w.dates||[]).filter(d=>wk.some(cell=>cell.ds&&cell.ds===d)).length;
-        return s+cnt*Number(w.wage)*Number(w.unit||1);
+        return s+cnt*netWage(w)*Number(w.unit||1);
       },0);
       if(wkWage>0) html+=`<div class="cal-wsum"><span class="cal-wsum-lbl">주간</span><span class="cal-wsum-val">${(wkWage/10000).toFixed(0)}만원</span></div>`;
     }
@@ -1550,7 +1560,7 @@ function openDayOv(ds) {
     document.getElementById('dayOvWorks').innerHTML=works.map(w=>`
       <div class="dm-work">
         <div class="dm-site">${w.site}${dataMode==='team'&&!w.isPersonal?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${workerLabel(w)}</span>`:''}</div>
-        <div class="dm-wage">${w.wage!=null?fmtW(w.wage):'비공개'}</div>
+        <div class="dm-wage">${w.wage!=null?fmtW(netWage(w))+(w.taxWithheld?'<span class="tax-tag">3.3%</span>':''):'비공개'}</div>
         <button class="dm-edit" onclick="openWorkOv('${w.id}',null)">✏️</button>
       </div>
     `).join('');
@@ -1573,6 +1583,7 @@ function openWorkOv(workId, prefillDate) {
       wageEditable=canSeeWage(w);
       document.getElementById('inSite').value=w.site;
       document.getElementById('inWage').value=wageEditable?w.wage:'';
+      document.getElementById('inTaxWithheld').checked=wageEditable&&!!w.taxWithheld;
       document.getElementById('inUnit').value=String(w.unit||1);
       editDates=[...w.dates]; editColor=w.color||'orange';
       document.getElementById('inWorkDesc').value=w.workDesc||'';
@@ -1581,11 +1592,15 @@ function openWorkOv(workId, prefillDate) {
       document.getElementById('inPhone').value=w.phone||'';
       document.getElementById('inMemo').value=w.memo||'';
       toggleInfoSection(!!(w.address||w.contact||w.phone||w.memo));
+      const job=DB.jobs.find(j=>j.id===w.jobId);
+      document.getElementById('jobDefaultTaxFg').style.display=(dataMode==='team'&&!w.isPersonal)?'':'none';
+      document.getElementById('inJobDefaultTax').checked=!!job?.defaultTaxWithheld;
     }
   } else {
     document.getElementById('inSite').value='';
     document.getElementById('inWorkDesc').value='';
     document.getElementById('inWage').value=defaultWage||'';
+    document.getElementById('inTaxWithheld').checked=defaultTaxWithheld;
     document.getElementById('inUnit').value='1';
     document.getElementById('inAddress').value='';
     document.getElementById('inContact').value='';
@@ -1594,6 +1609,8 @@ function openWorkOv(workId, prefillDate) {
     editColor='orange';
     if(prefillDate) editDates=[prefillDate];
     toggleInfoSection(false);
+    document.getElementById('jobDefaultTaxFg').style.display=(dataMode==='team')?'':'none';
+    document.getElementById('inJobDefaultTax').checked=defaultTaxWithheld;
   }
   document.getElementById('wageFg').style.display=wageEditable?'':'none';
   document.getElementById('wageHiddenNote').style.display=wageEditable?'none':'';
@@ -1728,6 +1745,7 @@ function renderMemberWageList() {
       <input type="number" class="mw-wage" placeholder="일당" value="${defaultWage||''}" inputmode="numeric">
       <span style="font-size:11px;color:var(--muted)">원</span>
       <select class="mw-unit">${unitOpts}</select>
+      <label class="mw-tax-label" title="인적공제 3.3% 공제 후 받음"><input type="checkbox" class="mw-tax"${defaultTaxWithheld?' checked':''}><span>3.3%</span></label>
     </div>`).join('');
   const _guestRemaining = Math.max(0, 2 - guestUsageThisMonth);
   if (isPremiumLeader) {
@@ -1753,6 +1771,7 @@ function addGuestRow() {
     <input type="number" class="mw-wage" placeholder="일당" value="${defaultWage||''}" inputmode="numeric">
     <span style="font-size:11px;color:var(--muted)">원</span>
     <select class="mw-unit">${unitOpts}</select>
+    <label class="mw-tax-label" title="인적공제 3.3% 공제 후 받음"><input type="checkbox" class="mw-tax"${defaultTaxWithheld?' checked':''}><span>3.3%</span></label>
     <button type="button" onclick="removeGuestRow(this)"
       style="background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;padding:0 2px;flex-shrink:0;line-height:1">×</button>`;
   const addBtn=document.querySelector('#memberWageList > button[onclick="addGuestRow()"]');
@@ -1777,7 +1796,9 @@ function setRecordType(type) {
     document.getElementById('unitFg').style.display = '';
     document.getElementById('visibilityFg').style.display = 'none';
     document.getElementById('sharedWithFg').style.display = 'none';
+    document.getElementById('jobDefaultTaxFg').style.display = 'none';
   } else {
+    document.getElementById('jobDefaultTaxFg').style.display = '';
     // 팀 기록: 역할별 UI 복원
     if (teamRole === 'leader') {
       document.getElementById('memberWagesFg').style.display = '';
@@ -2138,34 +2159,36 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
     if(!check.checked) continue;
     const wage=Number(row.querySelector('.mw-wage').value);
     const unit=Number(row.querySelector('.mw-unit').value)||1;
+    const taxWithheld=!!row.querySelector('.mw-tax')?.checked;
     if(check.value.startsWith('guest_')){
       const guestName=(row.querySelector('.mw-guest-name')?.value||'').trim();
       if(!guestName){alert('직접 입력 인력의 이름을 입력해주세요.');return;}
       if(!wage){alert(`${guestName}의 일당을 입력해주세요.`);return;}
-      members.push({uid:null,guestName,wage,unit,name:guestName});
+      members.push({uid:null,guestName,wage,unit,taxWithheld,name:guestName});
     } else {
       const name=row.querySelector('.mw-name').textContent;
       if(!wage){alert(`${name}의 일당을 입력해주세요.`);return;}
-      members.push({uid:check.value,wage,unit,name:name.trim()});
+      members.push({uid:check.value,wage,unit,taxWithheld,name:name.trim()});
     }
   }
   if(members.length===0){alert('한 명 이상 선택해주세요.');return;}
 
   const dayCount=editDates.length;
-  const summaryLines=members.map(m=>`• ${m.name} · ${dayCount}일 · ${fmtW(m.wage*dayCount*m.unit)}`).join('\n');
+  const summaryLines=members.map(m=>`• ${m.name} · ${dayCount}일 · ${fmtW(netWage(m)*dayCount*m.unit)}${m.taxWithheld?' (3.3%공제)':''}`).join('\n');
   if(!confirm(`[${site}]\n\n${summaryLines}\n\n총 ${members.length}명을 등록할까요?`))return;
 
   const {vis:jobVis,sharedWith:jobSharedWith}=getSelectedVisibility();
+  const jobDefaultTax=!!document.getElementById('inJobDefaultTax')?.checked;
 
   // job 생성 또는 기존 job 사용
   let jobId;
   const matched=DB.jobs.find(j=>j.site===site);
   if(matched){
     jobId=matched.id;
-    saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
+    saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
   } else {
     jobId=Date.now().toString(36)+'j';
-    const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+    const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
     try{
       await teamRef().collection('jobs').doc(jobId).set(jobData);
       DB.jobs.push({id:jobId,...jobData});
@@ -2180,14 +2203,14 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
   members.forEach((m,i)=>{
     const wId=(now+i).toString(36);
     const sortedDates=editDates.sort();
-    const wageData={jobId,dates:sortedDates,unit:m.unit,wage:m.wage,isPaid:false,workDesc,
+    const wageData={jobId,dates:sortedDates,unit:m.unit,wage:m.wage,taxWithheld:m.taxWithheld,isPaid:false,workDesc,
       createdBy:currentUser.uid,
       createdAt:firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
     if(m.uid) wageData.ownerUid=m.uid;
     else { wageData.guestName=m.guestName; wageData.isGuest=true; }
     batch.set(t.collection('wages').doc(wId),wageData);
-    newWorks.push({id:wId,site,workDesc,wage:m.wage,unit:m.unit,dates:sortedDates,isPaid:false,
+    newWorks.push({id:wId,site,workDesc,wage:m.wage,unit:m.unit,taxWithheld:m.taxWithheld,dates:sortedDates,isPaid:false,
       color:editColor,address,contact,phone,memo,
       createdBy:currentUser.uid,ownerUid:m.uid||null,
       guestName:m.guestName||null,isGuest:!m.uid,jobId});
@@ -2234,16 +2257,17 @@ async function saveWork() {
   // 팀 모드에서 개인 날일 기록 저장 (users/{uid}/works)
   if(isPersonalSave){
     const wage=Number(document.getElementById('inWage').value);
+    const taxWithheld=!!document.getElementById('inTaxWithheld').checked;
     if(!wage){alert('일당을 입력해 주세요.');return;}
     let savedW;
     if(existing){
       existing.site=site;existing.unit=unit;existing.dates=[...editDates].sort();
       existing.color=editColor;existing.workDesc=workDesc;existing.address=address;existing.contact=contact;
-      existing.phone=phone;existing.memo=memo;existing.wage=wage;
+      existing.phone=phone;existing.memo=memo;existing.wage=wage;existing.taxWithheld=taxWithheld;
       savedW=existing;
     } else {
       const wId=Date.now().toString(36);
-      savedW={id:wId,site,workDesc,address,contact,phone,memo,wage,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
+      savedW={id:wId,site,workDesc,address,contact,phone,memo,wage,taxWithheld,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
       DB.works.push(savedW);
     }
     DB.works.sort((a,b)=>(b.dates[b.dates.length-1]||'').localeCompare(a.dates[a.dates.length-1]||''));
@@ -2274,19 +2298,21 @@ async function saveWork() {
     if(existingJob){ jobVis=existingJob.visibility||'all'; jobSharedWith=existingJob.sharedWith||[]; }
   }
   const wageEditable=!existing||canSeeWage(existing);
-  let wage;
+  let wage, taxWithheld;
   if(wageEditable){
     wage=Number(document.getElementById('inWage').value);
+    taxWithheld=!!document.getElementById('inTaxWithheld').checked;
     if(!wage){alert('일당을 입력해 주세요.');return;}
   }
+  const jobDefaultTax=dataMode==='team'?!!document.getElementById('inJobDefaultTax')?.checked:false;
 
   let _savedWork = existing; // 핀포인트 저장 대상 추적
   if(existing){
     existing.site=site;existing.unit=unit;existing.dates=editDates.sort();existing.color=editColor;
     existing.workDesc=workDesc;existing.address=address;existing.contact=contact;existing.phone=phone;existing.memo=memo;
-    if(wageEditable) existing.wage=wage;
+    if(wageEditable){ existing.wage=wage; existing.taxWithheld=taxWithheld; }
     if(dataMode==='team'){
-      saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
+      saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
       // 팀장이 타인 일당 수정 시 알림
       if(isLeaderMode && (existing.ownerUid||existing.createdBy)!==currentUser.uid){
         createNotification(existing.ownerUid||existing.createdBy,'wage_modified',existing.id,site).catch(()=>{});
@@ -2299,11 +2325,11 @@ async function saveWork() {
       if(matched){
         jobId=matched.id;
         if(address||contact||phone||memo||isLeaderMode){
-          saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith});
+          saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
         }
       } else {
         jobId=Date.now().toString(36)+'j';
-        const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+        const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
         try {
           await teamRef().collection('jobs').doc(jobId).set(jobData);
           DB.jobs.push({id:jobId,...jobData});
@@ -2315,7 +2341,7 @@ async function saveWork() {
       }
     }
     const wId=Date.now().toString(36);
-    const w={id:wId,site,workDesc,wage,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
+    const w={id:wId,site,workDesc,wage,taxWithheld,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
     if(dataMode==='team'){ w.createdBy=currentUser.uid; w.ownerUid=ownerUid; w.jobId=jobId; }
     DB.works.push(w);
     _savedWork = w;
@@ -2418,7 +2444,7 @@ function renderWork() {
   const totalWage=activeFiltered.reduce((s,w)=>{
     if(w.wage==null) return s;
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===workY&&p.m===workM;}).length;
-    return s+cnt*Number(w.wage)*Number(w.unit||1);
+    return s+cnt*netWage(w)*Number(w.unit||1);
   },0);
   const plannedCount=filtered.filter(w=>getWorkStatus(w)==='planned').length;
   const isCurMonth=workY===TODAY.getFullYear()&&workM===TODAY.getMonth();
@@ -2477,8 +2503,8 @@ function renderWorkRow(w,y,m,standalone) {
       :`<span class="wi-badge badge-unpaid">${isPayOut(w)?'미지급':'미정산'}</span>`);
   const mDates=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;});
   const u=Number(w.unit||1);
-  const total=wageVisible?mDates.length*Number(w.wage)*u:null;
-  const calc=wageVisible?(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})():'';
+  const total=wageVisible?mDates.length*netWage(w)*u:null;
+  const calc=wageVisible?(()=>{const parts=[fmtW(netWage(w))];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})():'';
   const c=getColor(w.color||'orange');
   const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="event.stopPropagation();delWork('${w.id}')">🗑</button>`:'';
   const titleHtml=standalone
@@ -2490,7 +2516,7 @@ function renderWorkRow(w,y,m,standalone) {
         ${titleHtml}
         <div class="wi-dates">${formatDatesShort(mDates)}</div>
         ${w.workDesc?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${w.workDesc}</div>`:''}
-        <div class="wi-wage">${wageVisible?`일당 ${fmtW(w.wage)}${u!==1?` · ${u}품`:''}`:'일당 비공개'}</div>
+        <div class="wi-wage">${wageVisible?`일당 ${fmtW(netWage(w))}${u!==1?` · ${u}품`:''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}`:'일당 비공개'}</div>
         ${statusBadge}${badge}
       </div>
       <div class="wi-right">
@@ -2508,7 +2534,7 @@ function renderPay() {
   const monthWorks=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
   const mWage=monthWorks.reduce((s,w)=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}).length;
-    return s+cnt*Number(w.wage)*Number(w.unit||1);
+    return s+cnt*netWage(w)*Number(w.unit||1);
   },0);
   const mUnpaid=monthWorks.filter(w=>!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
 
@@ -2616,7 +2642,7 @@ function openPayDetail(wId) {
   ].filter(Boolean).join('');
   const payOut = isPayOut(w);
   document.getElementById('pdInfo').innerHTML=`
-    ${formatDatesShort(w.dates)} · 일당 ${fmtW(w.wage)}<br>
+    ${formatDatesShort(w.dates)} · 일당 ${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}<br>
     ${payOut?'지급 예정':'예상'} <b>${fmtW(exp)}</b> &nbsp;|&nbsp; ${payOut?'지급':'수령'} <b>${fmtW(rcv)}</b>
     ${diff!==0?` &nbsp;|&nbsp; 차액 <b style="color:${diff<0?'var(--red)':'var(--green)'}">${diff<0?'▼':'▲'} ${fmtW(Math.abs(diff))}</b>`:''}
     ${infoLines}
@@ -2839,7 +2865,7 @@ function renderIncomeChart() {
     // 프리미엄: statY 연도 전체 1~12월 고정
     for(let m=0;m<12;m++){
       const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}))
-        .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
+        .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}).length;return s+cnt*netWage(w)*Number(w.unit||1);},0);
       months.push({y:statY,m,wage,lbl:`${m+1}월`});
     }
   } else {
@@ -2848,7 +2874,7 @@ function renderIncomeChart() {
       let y=statY, m=statM-i;
       if(m<0){m+=12;y--;}
       const wage=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===y&&p.m===m;}))
-        .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;}).length;return s+cnt*Number(w.wage)*Number(w.unit||1);},0);
+        .reduce((s,w)=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===y&&p.m===m;}).length;return s+cnt*netWage(w)*Number(w.unit||1);},0);
       months.push({y,m,wage,lbl:`${m+1}월`});
     }
   }
@@ -2876,7 +2902,7 @@ function renderIncomeChart() {
 function exportCSV() {
   if(dataMode==='team'&&teamRole!=='leader'){alert('팀원 모드에서는 전체 데이터 내보내기가 제한돼요.');return;}
   const short = s => s ? s.slice(5).replace('-', '/') : ''; // 'YYYY-MM-DD' → 'MM/DD'
-  const rows=[['구분','팀원명','현장명','작업 내용','작업기간','작업일수','일당','품수','총금액','정산상태','수령액','미수금']];
+  const rows=[['구분','팀원명','현장명','작업 내용','작업기간','작업일수','일당(공제후)','인적공제','품수','총금액','정산상태','수령액','미수금']];
   DB.works.filter(w=>w.wage!=null).forEach(w=>{
     const dates=(w.dates||[]).slice().sort();
     const period = dates.length===0 ? '' : dates.length===1
@@ -2887,7 +2913,7 @@ function exportCSV() {
     const status=w.isPaid?'정산완료':(rcv>0?'부분정산':'미정산');
     const ownerName = dataMode==='team' ? (memberName(w.ownerUid||w.createdBy)||'') : '';
     const section = w.isPersonal ? '개인(날일)' : (dataMode==='team' ? '팀' : '개인');
-    rows.push([section, ownerName, w.site, w.workDesc||'', period, dates.length, w.wage, w.unit||1, exp, status, rcv, unpaid]);
+    rows.push([section, ownerName, w.site, w.workDesc||'', period, dates.length, netWage(w), w.taxWithheld?'3.3%':'', w.unit||1, exp, status, rcv, unpaid]);
   });
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
@@ -2914,7 +2940,7 @@ function printReport() {
   works.forEach(w => {
     const cnt = (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; }).length;
     const u = Number(w.unit||1);
-    mWage += cnt * Number(w.wage) * u;
+    mWage += cnt * netWage(w) * u;
     sUnit += cnt * u;
   });
   const workDays = new Set(works.flatMap(w =>
@@ -2930,14 +2956,14 @@ function printReport() {
   const worksRows = works.map(w => {
     const mDates = (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; });
     const u = Number(w.unit||1);
-    const total = mDates.length * Number(w.wage) * u;
+    const total = mDates.length * netWage(w) * u;
     const outstanding = Math.max(0, expAmt(w) - rcvAmt(w.id));
     const statusLabel = w.isPaid ? '정산완료' : outstanding > 0 ? `미수 ${fmtW(outstanding)}` : '정산대기';
     const statusClass = w.isPaid ? 's-paid' : outstanding > 0 ? 's-unpaid' : 's-pending';
     return `<tr>
       <td class="td-site">${w.site}</td>
       <td class="td-sub">${formatDatesShort(mDates)}</td>
-      <td class="td-num">${fmtW(w.wage)}</td>
+      <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
       <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
       <td class="td-num td-bold">${fmtW(total)}</td>
       <td class="td-center"><span class="badge ${statusClass}">${statusLabel}</span></td>
@@ -3000,6 +3026,7 @@ function printReport() {
   .s-paid{background:#e8f5e9;color:#2e7d32;}
   .s-unpaid{background:#fff3e0;color:#e65100;}
   .s-pending{background:#f5f5f5;color:#888;}
+  .tax-tag{font-size:9px;font-weight:700;color:#E74C3C;background:rgba(231,76,60,.12);padding:1px 5px;border-radius:8px;margin-left:4px;white-space:nowrap;}
   .doc-footer{margin-top:52px;padding-top:16px;border-top:1px solid #ebebeb;font-size:11px;color:#ccc;text-align:center;letter-spacing:0.5px;}
   .close-btn{position:fixed;top:16px;right:20px;z-index:1000;background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
   @media print{
@@ -3090,8 +3117,8 @@ function renderStat() {
   works.forEach(w=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
     const u=Number(w.unit||1);
-    mWage+=cnt*Number(w.wage)*u;
-    mWageBase+=cnt*Number(w.wage); // 품수 제외 — 순수 일당 기준
+    mWage+=cnt*netWage(w)*u;
+    mWageBase+=cnt*netWage(w); // 품수 제외 — 순수 일당 기준
     sUnit+=cnt*u;
   });
   const workDays=new Set(works.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
@@ -3112,10 +3139,10 @@ function renderStat() {
   if (isPremium) {
     let yearWage = 0;
     statBase.filter(w=>getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY;}))
-      .forEach(w=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY;}).length;yearWage+=cnt*Number(w.wage)*Number(w.unit||1);});
+      .forEach(w=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY;}).length;yearWage+=cnt*netWage(w)*Number(w.unit||1);});
     let prevWage = 0;
     statBase.filter(w=>getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY-1;}))
-      .forEach(w=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY-1;}).length;prevWage+=cnt*Number(w.wage)*Number(w.unit||1);});
+      .forEach(w=>{const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY-1;}).length;prevWage+=cnt*netWage(w)*Number(w.unit||1);});
     const diffPct = prevWage>0 ? Math.round((yearWage-prevWage)/prevWage*100) : null;
     const diffStr = diffPct!==null
       ? `<span style="font-size:11px;font-weight:700;color:${diffPct>=0?'var(--green)':'var(--red)'}">${diffPct>=0?'+':''}${diffPct}%</span>`
@@ -3164,8 +3191,8 @@ function renderStat() {
         statBase.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned').forEach(w=>{
           const thisCnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}).length;
           const prevCnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY-1&&p.m===m;}).length;
-          ytdThis+=thisCnt*Number(w.wage)*Number(w.unit||1);
-          ytdPrev+=prevCnt*Number(w.wage)*Number(w.unit||1);
+          ytdThis+=thisCnt*netWage(w)*Number(w.unit||1);
+          ytdPrev+=prevCnt*netWage(w)*Number(w.unit||1);
         });
       }
       const ytdDiff = ytdThis - ytdPrev;
@@ -3258,14 +3285,14 @@ function renderStat() {
   wl.innerHTML=works.map(w=>{
     const mDates=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;});
     const u=Number(w.unit||1);
-    const total=mDates.length*Number(w.wage)*u;
-    const calc=(()=>{const parts=[fmtW(w.wage)];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})();
+    const total=mDates.length*netWage(w)*u;
+    const calc=(()=>{const parts=[fmtW(netWage(w))];if(mDates.length>1)parts.push(`${mDates.length}일`);if(u!==1)parts.push(`${u}품`);return parts.length>1?parts.join(' × '):'';})();
     return `
       <div class="witem">
         <div class="wi-main">
           <div class="wi-site">${w.site}${workTypeBadge(w)}</div>
           <div class="wi-dates">${formatDatesShort(mDates)}</div>
-          <div class="wi-wage">일당 ${fmtW(w.wage)}${u!==1?` · ${u}품`:''}</div>
+          <div class="wi-wage">일당 ${fmtW(netWage(w))}${u!==1?` · ${u}품`:''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</div>
         </div>
         <div class="wi-right">
           <div class="wi-total">${fmtW(total)}</div>
@@ -3303,7 +3330,7 @@ function _buildWageCard(name, roleLabel, isLeaderRole, works) {
   const rows = works.map(w => {
     const mDates = (w.dates || []).filter(d => { const p = parsD(d); return p.y === wageStmtY && p.m === wageStmtM; });
     const u = Number(w.unit || 1);
-    const mAmt = mDates.length * Number(w.wage) * u;
+    const mAmt = mDates.length * netWage(w) * u;
     monthTotal += mAmt;
     const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
     const badge = w.isPaid
@@ -3314,7 +3341,7 @@ function _buildWageCard(name, roleLabel, isLeaderRole, works) {
     return `<div style="display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--text)">${w.site}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(w.wage)}${u !== 1 ? ' · ' + u + '품' : ''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(netWage(w))}${u !== 1 ? ' · ' + u + '품' : ''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0;margin-left:12px">
         <div style="font-size:13px;font-weight:700;color:var(--fg)">${fmtW(mAmt)}</div>
@@ -3349,7 +3376,7 @@ function renderWageStatement() {
     const works = _wageStmtWorks(m.uid, null);
     const mTotal = works.reduce((s, w) => {
       const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
-      return s + cnt * Number(w.wage) * Number(w.unit||1);
+      return s + cnt * netWage(w) * Number(w.unit||1);
     }, 0);
     grandTotal += mTotal;
     const name = (m.customName || m.displayName || '이름 없음') + (m.uid === currentUser.uid ? ' (나)' : '');
@@ -3362,7 +3389,7 @@ function renderWageStatement() {
     const gw = _wageStmtWorks(null, gName);
     const mTotal = gw.reduce((s, w) => {
       const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
-      return s + cnt * Number(w.wage) * Number(w.unit||1);
+      return s + cnt * netWage(w) * Number(w.unit||1);
     }, 0);
     grandTotal += mTotal;
     html += _buildWageCard(gName, '외부', false, gw);
@@ -3392,7 +3419,7 @@ function printWageStatement() {
     const rows = works.map(w => {
       const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
       const u = Number(w.unit||1);
-      const mAmt = mDates.length * Number(w.wage) * u;
+      const mAmt = mDates.length * netWage(w) * u;
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -3400,7 +3427,7 @@ function printWageStatement() {
       return `<tr>
         <td class="td-site">${w.site}</td>
         <td class="td-sub">${formatDatesShort(mDates)}</td>
-        <td class="td-num">${fmtW(w.wage)}</td>
+        <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
@@ -3419,7 +3446,7 @@ function printWageStatement() {
     const rows = gw.map(w => {
       const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
       const u = Number(w.unit||1);
-      const mAmt = mDates.length * Number(w.wage) * u;
+      const mAmt = mDates.length * netWage(w) * u;
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -3427,7 +3454,7 @@ function printWageStatement() {
       return `<tr>
         <td class="td-site">${w.site}</td>
         <td class="td-sub">${formatDatesShort(mDates)}</td>
-        <td class="td-num">${fmtW(w.wage)}</td>
+        <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
@@ -3487,6 +3514,7 @@ function printWageStatement() {
   .s-paid{background:#e8f5e9;color:#2e7d32;}
   .s-unpaid{background:#fff3e0;color:#e65100;}
   .s-pending{background:#f5f5f5;color:#888;}
+  .tax-tag{font-size:9px;font-weight:700;color:#E74C3C;background:rgba(231,76,60,.12);padding:1px 5px;border-radius:8px;margin-left:4px;white-space:nowrap;}
   .member-total{text-align:right;font-size:13px;color:#666;padding:10px 2px 0;border-top:1px solid #f0f0f0;margin-top:2px;}
   .member-total strong{font-size:15px;font-weight:700;color:#1a1a1a;margin-left:8px;}
   .grand-total{margin-top:36px;padding:20px 24px;background:#1a1a1a;color:#fff;border-radius:12px;display:flex;justify-content:space-between;align-items:center;}

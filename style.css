@@ -189,6 +189,9 @@
     .mw-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .mw-wage { width:86px; text-align:right; border:1.5px solid var(--border); border-radius:8px; padding:5px 8px; font-size:14px; background:var(--bg); color:var(--text); }
     .mw-unit { width:68px; border:1.5px solid var(--border); border-radius:8px; padding:5px 4px; font-size:13px; background:var(--bg); color:var(--text); }
+    .mw-tax-label { display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0; cursor:pointer; }
+    .mw-tax-label input { width:16px; height:16px; accent-color:var(--pri); cursor:pointer; }
+    .mw-tax-label span { font-size:9px; color:var(--muted); font-weight:600; }
     .member-check:last-child { border-bottom:none; }
     .member-check input { width:18px; height:18px; accent-color:var(--pri); cursor:pointer; }
 
@@ -484,6 +487,10 @@
     .sw::before { content:''; position:absolute; width:22px; height:22px; left:2px; top:2px; background:#fff; border-radius:50%; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.25); }
     .sw-wrap input:checked + .sw { background:var(--pri); }
     .sw-wrap input:checked + .sw::before { transform:translateX(18px); }
+
+    .tax-chk-label { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:500; color:var(--text); cursor:pointer; margin-top:8px; }
+    .tax-chk-label input { width:16px; height:16px; flex-shrink:0; accent-color:var(--pri); }
+    .tax-tag { font-size:9px; font-weight:700; color:#E74C3C; background:rgba(231,76,60,.12); padding:1px 5px; border-radius:8px; margin-left:4px; white-space:nowrap; }
     .theme-seg { display:flex; background:var(--bg-sub); border-radius:10px; padding:3px; margin:4px 16px 14px; }
     .theme-seg button { flex:1; border:none; background:none; padding:8px 4px; font-size:13px; font-weight:600; color:var(--muted); cursor:pointer; border-radius:8px; transition:all .15s; }
     .theme-seg button.on { background:var(--card); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.15); }
