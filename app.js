@@ -92,13 +92,12 @@ function toggleInfoSection(force) {
 async function saveDailyNote() {
   if (!selDate || !currentUser) return;
   const text = document.getElementById('inDayMemo').value.trim();
-  const photos = DB.dailyNotes[selDate]?.photos || [];
-  if (text || photos.length) { DB.dailyNotes[selDate] = {text, photos}; } else { delete DB.dailyNotes[selDate]; }
+  if (text) { DB.dailyNotes[selDate] = text; } else { delete DB.dailyNotes[selDate]; }
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
   renderCal();
   try {
     const ref = fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate);
-    if (text || photos.length) { await ref.set({ text, photos, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, {merge:true}); }
+    if (text) { await ref.set({ text, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
     else { await ref.delete(); }
     const el = document.getElementById('dayMemoSaved');
     if (el) { el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 1500); }
@@ -130,10 +129,19 @@ function compressImage(file, maxDim, quality) {
     reader.readAsDataURL(file);
   });
 }
-async function handleDayPhotoSelect(event) {
+async function saveWorkPhotos(w) {
+  if (dataMode === 'team' && !w.isPersonal) {
+    await teamRef().collection('wages').doc(w.id).update({photos: w.photos || []});
+  } else {
+    await fsdb.collection('users').doc(currentUser.uid).collection('works').doc(w.id).update({photos: w.photos || []});
+  }
+}
+async function handleWorkPhotoSelect(event) {
   const files = [...(event.target.files || [])];
   event.target.value = '';
-  if (!files.length || !selDate || !currentUser) return;
+  const workId = document.getElementById('editWorkId').value;
+  const w = workId ? DB.works.find(x => x.id === workId) : null;
+  if (!files.length || !w || !currentUser) return;
   let remainingFree = isPremium ? Infinity : Math.max(0, FREE_PHOTO_LIMIT - photoUsageThisMonth);
   if (!isPremium && remainingFree === 0) { openOv('premUpgradeOv'); return; }
   if (!isPremium && files.length > remainingFree) {
@@ -141,17 +149,16 @@ async function handleDayPhotoSelect(event) {
     files.length = remainingFree;
   }
   showToast('사진 업로드 중...');
-  const note = DB.dailyNotes[selDate] || {text: '', photos: []};
-  if (!note.photos) note.photos = [];
+  if (!w.photos) w.photos = [];
   const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
   for (const file of files) {
     try {
       const blob = await compressImage(file);
-      const fileName = `${selDate}_${Date.now()}_${Math.random().toString(36).slice(2,7)}.jpg`;
+      const fileName = `${w.id}_${Date.now()}_${Math.random().toString(36).slice(2,7)}.jpg`;
       const ref = storage.ref(`workPhotos/${currentUser.uid}/${fileName}`);
       await ref.put(blob, {contentType: 'image/jpeg'});
       const url = await ref.getDownloadURL();
-      note.photos.push(url);
+      w.photos.push(url);
       if (!isPremium) {
         photoUsageThisMonth++;
         fsdb.collection('users').doc(currentUser.uid).set(
@@ -160,43 +167,33 @@ async function handleDayPhotoSelect(event) {
       }
     } catch(e) { console.error('사진 업로드 오류:', e); alert('사진 업로드 중 오류가 발생했어요: ' + e.message); }
   }
-  DB.dailyNotes[selDate] = note;
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  try {
-    await fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate).set(
-      {photos: note.photos, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge: true}
-    );
-  } catch(e) { console.error('사진 정보 저장 오류:', e); }
-  renderDayPhotoGrid();
-  renderCal();
+  try { await saveWorkPhotos(w); } catch(e) { console.error('사진 정보 저장 오류:', e); }
+  renderWorkPhotoGrid();
   showToast('사진이 저장됐어요');
 }
-async function removeDayPhoto(idx) {
-  const note = DB.dailyNotes[selDate];
-  if (!note || !note.photos || !note.photos[idx]) return;
+async function removeWorkPhoto(idx) {
+  const workId = document.getElementById('editWorkId').value;
+  const w = workId ? DB.works.find(x => x.id === workId) : null;
+  if (!w || !w.photos || !w.photos[idx]) return;
   if (!confirm('이 사진을 삭제할까요?')) return;
-  const url = note.photos[idx];
-  note.photos.splice(idx, 1);
-  const stillHasContent = !!(note.text || note.photos.length);
-  if (!stillHasContent) delete DB.dailyNotes[selDate];
+  const url = w.photos[idx];
+  w.photos.splice(idx, 1);
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
   try { await storage.refFromURL(url).delete(); } catch(e) { console.warn('스토리지 파일 삭제 실패:', e.message); }
-  try {
-    const ref = fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate);
-    if (stillHasContent) await ref.set({photos: note.photos, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge: true});
-    else await ref.delete();
-  } catch(e) { console.error('사진 삭제 반영 오류:', e); }
-  renderDayPhotoGrid();
-  renderCal();
+  try { await saveWorkPhotos(w); } catch(e) { console.error('사진 삭제 반영 오류:', e); }
+  renderWorkPhotoGrid();
 }
-function renderDayPhotoGrid() {
-  const grid = document.getElementById('dayPhotoGrid');
+function renderWorkPhotoGrid() {
+  const grid = document.getElementById('workPhotoGrid');
   if (!grid) return;
-  const photos = DB.dailyNotes[selDate]?.photos || [];
+  const workId = document.getElementById('editWorkId').value;
+  const w = workId ? DB.works.find(x => x.id === workId) : null;
+  const photos = (w && w.photos) || [];
   grid.innerHTML = photos.map((url, i) => `
     <div class="day-photo-thumb">
       <img src="${url}" onclick="window.open('${url}','_blank')">
-      <button onclick="removeDayPhoto(${i})">✕</button>
+      <button onclick="removeWorkPhoto(${i})">✕</button>
     </div>`).join('');
 }
 
@@ -381,6 +378,7 @@ async function save() {
         if (!canSeeWage(w)) return;
         batch.set(t.collection('wages').doc(w.id), {
           jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, taxWithheld: w.taxWithheld||false, isPaid: w.isPaid,
+          photos: w.photos||[],
           ownerUid: w.ownerUid || w.createdBy,
           createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -418,7 +416,7 @@ async function saveOneWork(w) {
     if (!canSeeWage(w)) return; // wage 수정 권한 없을 때 skip (job 정보는 saveJobInfo가 처리)
     await teamRef().collection('wages').doc(w.id).set({
       jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, taxWithheld: w.taxWithheld||false, isPaid: w.isPaid,
-      workDesc: w.workDesc || '',
+      workDesc: w.workDesc || '', photos: w.photos||[],
       ownerUid: w.ownerUid || w.createdBy,
       createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -492,6 +490,7 @@ async function loadTeamData() {
       site: job.site || '(삭제된 현장)', address: job.address, contact: job.contact, phone: job.phone, memo: job.memo, color: job.color,
       jobCreatedBy: job.createdBy,
       dates: wg.dates, unit: wg.unit, wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid,
+      photos: wg.photos||[],
       ownerUid: wg.ownerUid || (!wg.isGuest ? wg.createdBy : null),
       guestName: wg.guestName || null, isGuest: wg.isGuest || false,
       workDesc: wg.workDesc || '', createdBy: wg.createdBy
@@ -533,10 +532,7 @@ async function loadTeamData() {
   try {
     const notesSnap = await fsdb.collection('users').doc(myUid).collection('dailyNotes').get();
     DB.dailyNotes = {};
-    notesSnap.docs.forEach(d => {
-      const nd = d.data();
-      if (nd.text || (nd.photos && nd.photos.length)) DB.dailyNotes[d.id] = {text: nd.text||'', photos: nd.photos||[]};
-    });
+    notesSnap.docs.forEach(d => { if (d.data().text) DB.dailyNotes[d.id] = d.data().text; });
   } catch(e) { console.warn('일일 메모 로드 오류:', e.message); }
   // 프리미엄 팀장: maxMembers 자동 업그레이드
   if (isPremiumLeader && isLeader && teamInfo && teamInfo.maxMembers <= 5) {
@@ -736,7 +732,7 @@ async function migrateFromDisbandedTeam(userRef, teamDoc) {
       contact: job.contact || '', phone: job.phone || '',
       memo: job.memo || '', color: job.color || '#007AFF',
       dates: wg.dates || [], unit: wg.unit || 1,
-      wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
+      wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
       createdBy: wg.createdBy, teamName: tName
     });
   });
@@ -761,10 +757,7 @@ async function loadPersonalData(userRef) {
   DB.dailyNotes = {};
   try {
     const notesSnap = await ref.collection('dailyNotes').get();
-    notesSnap.docs.forEach(d => {
-      const nd = d.data();
-      if (nd.text || (nd.photos && nd.photos.length)) DB.dailyNotes[d.id] = {text: nd.text||'', photos: nd.photos||[]};
-    });
+    notesSnap.docs.forEach(d => { if (d.data().text) DB.dailyNotes[d.id] = d.data().text; });
   } catch(e) { console.warn('일일 메모 로드 오류:', e.message); }
 
   if (!worksSnap.empty || !paysSnap.empty) {
@@ -1177,7 +1170,7 @@ async function deleteTeam() {
           contact: job.contact || '', phone: job.phone || '',
           memo: job.memo || '', color: job.color || '#007AFF',
           dates: wg.dates || [], unit: wg.unit || 1,
-          wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
+          wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
           createdBy: wg.createdBy, teamName: tName
         });
       });
@@ -1237,7 +1230,7 @@ async function leaveTeam() {
           contact: job.contact || '', phone: job.phone || '',
           memo: job.memo || '', color: job.color || '#007AFF',
           dates: wg.dates || [], unit: wg.unit || 1,
-          wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
+          wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
           createdBy: wg.createdBy, teamName: tName
         });
       });
@@ -1324,7 +1317,7 @@ async function removeMember(uid) {
         contact: job.contact || '', phone: job.phone || '',
         memo: job.memo || '', color: job.color || '#007AFF',
         dates: wg.dates || [], unit: wg.unit || 1,
-        wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid || false,
+        wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
         createdBy: wg.createdBy, teamName: tName
       };
     });
@@ -1681,9 +1674,8 @@ function openDayOv(ds) {
       </div>
     `).join('');
   }
-  document.getElementById('inDayMemo').value = DB.dailyNotes[ds]?.text || '';
+  document.getElementById('inDayMemo').value = DB.dailyNotes[ds] || '';
   document.getElementById('dayMemoSaved').style.display = 'none';
-  renderDayPhotoGrid();
   openOv('dayOv');
 }
 
@@ -1712,6 +1704,8 @@ function openWorkOv(workId, prefillDate) {
       const job=DB.jobs.find(j=>j.id===w.jobId);
       document.getElementById('jobDefaultTaxFg').style.display=(dataMode==='team'&&!w.isPersonal)?'':'none';
       document.getElementById('inJobDefaultTax').checked=!!job?.defaultTaxWithheld;
+      document.getElementById('workPhotoFg').style.display='';
+      renderWorkPhotoGrid();
     }
   } else {
     document.getElementById('inSite').value='';
@@ -1728,6 +1722,7 @@ function openWorkOv(workId, prefillDate) {
     toggleInfoSection(false);
     document.getElementById('jobDefaultTaxFg').style.display=(dataMode==='team')?'':'none';
     document.getElementById('inJobDefaultTax').checked=defaultTaxWithheld;
+    document.getElementById('workPhotoFg').style.display='none';
   }
   document.getElementById('wageFg').style.display=wageEditable?'':'none';
   document.getElementById('wageHiddenNote').style.display=wageEditable?'none':'';
