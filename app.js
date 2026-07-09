@@ -266,6 +266,18 @@ applyTheme();
 let defaultWage = localStorage.getItem('defaultWage') || '';
 let defaultTaxWithheld = localStorage.getItem('defaultTaxWithheld') === 'true';
 let userDisplayName = ''; // 사용자 설정 닉네임 (구글 이름과 별개)
+let userOccupation = null; // 직종 (목수/타일/도장 등)
+const OCCUPATIONS = [
+  {id:'carpenter', icon:'🔨', label:'목수'},
+  {id:'tile', icon:'🧱', label:'타일'},
+  {id:'paint', icon:'🎨', label:'도장'},
+  {id:'electric', icon:'⚡', label:'전기'},
+  {id:'plumbing', icon:'🚿', label:'설비'},
+  {id:'wallpaper', icon:'🖼️', label:'도배'},
+  {id:'floor', icon:'📐', label:'마루'},
+  {id:'general', icon:'🏗️', label:'종합'},
+  {id:'etc', icon:'✏️', label:'기타'},
+];
 let workEntryMode = 'team'; // 팀 모드에서 기록 추가 시 'team' | 'personal'
 function saveDefWage(v) { defaultWage = v; localStorage.setItem('defaultWage', v); }
 function saveDefTax(v) { defaultTaxWithheld = v; localStorage.setItem('defaultTaxWithheld', String(v)); }
@@ -282,6 +294,7 @@ function renderSet() {
   if(wst) wst.checked = showWeekSum;
   const dtt = document.getElementById('defTaxToggle');
   if(dtt) dtt.checked = defaultTaxWithheld;
+  updateOccupationSettingLabel();
   const card = document.getElementById('accountCard');
   if(!card) return;
   if(currentUser) {
@@ -600,6 +613,7 @@ async function loadData() {
     guestUsageThisMonth = (userData.guestUsage || {})[_mk] || 0;
     calendarFeedToken = userData.calendarFeedToken || null;
     photoUsageThisMonth = (userData.photoUsage || {})[_mk] || 0;
+    userOccupation = userData.occupation || null;
     const teamId = userData.teamId || null;
 
     if (teamId) {
@@ -703,7 +717,9 @@ async function loadData() {
   }
   updateHeader();
   renderCal();
-  setTimeout(showOnboard, 600);
+  updateOccupationSettingLabel();
+  if (!userOccupation) { openOccupationOv(); }
+  else { setTimeout(showOnboard, 600); }
 }
 
 async function migrateFromDisbandedTeam(userRef, teamDoc) {
@@ -1457,8 +1473,8 @@ function formatDatesShort(dates) {
 const OB_STEPS = [
   {
     icon: '🔨',
-    title: '목수 일지에 오신 걸 환영해요',
-    desc: '현장 기록부터 정산·통계·팀 관리까지<br>목수 일지 하나로 깔끔하게 정리해드려요'
+    title: '현장일지에 오신 걸 환영해요',
+    desc: '현장 기록부터 정산·통계·팀 관리까지<br>현장일지 하나로 깔끔하게 정리해드려요'
   },
   {
     icon: '🗓️',
@@ -1500,6 +1516,35 @@ function onboardNext() {
   else { localStorage.setItem('onboarded_v2','1'); document.getElementById('obOv').style.display='none'; }
 }
 
+// ── 직종 선택 ──
+function openOccupationOv() {
+  renderOccGrid();
+  document.getElementById('occupationOv').style.display = 'flex';
+}
+function renderOccGrid() {
+  document.getElementById('occGrid').innerHTML = OCCUPATIONS.map(o => `
+    <div class="occ-chip${userOccupation===o.id?' on':''}" onclick="selectOccupation('${o.id}')">
+      <span class="occ-icon">${o.icon}</span>
+      <span class="occ-label">${o.label}</span>
+    </div>`).join('');
+}
+async function selectOccupation(id) {
+  userOccupation = id;
+  document.getElementById('occupationOv').style.display = 'none';
+  updateOccupationSettingLabel();
+  if (currentUser) {
+    try { await fsdb.collection('users').doc(currentUser.uid).set({occupation: id}, {merge: true}); }
+    catch(e) { console.error('직종 저장 오류:', e); }
+  }
+  setTimeout(showOnboard, 600);
+}
+function updateOccupationSettingLabel() {
+  const el = document.getElementById('occLabel');
+  if (!el) return;
+  const o = OCCUPATIONS.find(x => x.id === userOccupation);
+  el.textContent = o ? `${o.icon} ${o.label}` : '미설정';
+}
+
 // ── 탭 ──
 function goTab(tab, btn) {
   curTab=tab;
@@ -1507,8 +1552,8 @@ function goTab(tab, btn) {
   document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('on'));
   document.getElementById('page-'+tab).classList.add('on');
   btn.classList.add('on');
-  const titles={cal:'목수 일지',work:'현장',pay:'정산',stat:'통계',set:'설정'};
-  document.getElementById('hTit').textContent=titles[tab]||'목수 일지';
+  const titles={cal:'현장일지',work:'현장',pay:'정산',stat:'통계',set:'설정'};
+  document.getElementById('hTit').textContent=titles[tab]||'현장일지';
   const fab=document.getElementById('fab');
   if(tab==='cal')  { renderCal(); fab.style.display='flex'; fab.onclick=()=>openWorkOv(null,todayStr()); }
   if(tab==='work') { renderWork(); fab.style.display='flex'; fab.onclick=()=>openWorkOv(null,todayStr()); }
@@ -3031,7 +3076,7 @@ function exportCSV() {
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download=`목수일지_${todayStr()}.csv`;
+  a.href=url; a.download=`현장일지_${todayStr()}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
@@ -3153,7 +3198,7 @@ function printReport() {
 
 <div class="doc-header">
   <div>
-    <div class="doc-brand">목수일지</div>
+    <div class="doc-brand">현장일지</div>
     <div class="doc-title">${monthLabel} 작업보고서</div>
     <div class="doc-sub">${teamLabel}${monthLabel}${roleSuffix}</div>
   </div>
@@ -3199,7 +3244,7 @@ ${payments.length > 0 ? `
   </table>
 </div>` : ''}
 
-<div class="doc-footer">목수일지 · carpenter-wj.github.io/carpenter-app</div>
+<div class="doc-footer">현장일지 · carpenter-wj.github.io/carpenter-app</div>
 </body>
 </html>`;
 
@@ -3646,7 +3691,7 @@ function printWageStatement() {
 <button class="close-btn" onclick="window.close()">✕ 닫기</button>
 <div class="doc-header">
   <div>
-    <div class="doc-brand">목수일지</div>
+    <div class="doc-brand">현장일지</div>
     <div class="doc-title">${monthLabel} 인건비 명세서</div>
     <div class="doc-sub">${teamName} · ${monthLabel}</div>
   </div>
@@ -3660,7 +3705,7 @@ ${memberSections}
   <div class="grand-label">${monthLabel} 팀 총 인건비</div>
   <div class="grand-value">${fmtW(grandTotal)}</div>
 </div>
-<div class="doc-footer">목수일지 · carpenter-wj.github.io/carpenter-app</div>
+<div class="doc-footer">현장일지 · carpenter-wj.github.io/carpenter-app</div>
 </body>
 </html>`;
 
@@ -3678,7 +3723,7 @@ function exportData() {
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download=`목수일지_백업_${todayStr()}.json`;
+  a.href=url; a.download=`현장일지_백업_${todayStr()}.json`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 function importData(e) {

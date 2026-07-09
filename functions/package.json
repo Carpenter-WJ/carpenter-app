@@ -1,6 +1,6 @@
 {
   "name": "carpenter-app-functions",
-  "description": "Firebase Cloud Functions for 목수일지",
+  "description": "Firebase Cloud Functions for 현장일지",
   "scripts": {
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",

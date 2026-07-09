@@ -137,6 +137,12 @@
     .ob-dot { width:7px; height:7px; border-radius:50%; background:var(--border); transition:all .25s; }
     .ob-dot.on { width:22px; background:var(--pri); border-radius:4px; }
     .ob-btn { width:100%; padding:17px; background:var(--pri); color:#fff; border:none; border-radius:16px; font-size:16px; font-weight:700; cursor:pointer; font-family:inherit; }
+    .occ-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    .occ-chip { display:flex; flex-direction:column; align-items:center; gap:6px; padding:16px 6px; border:1.5px solid var(--border); border-radius:14px; cursor:pointer; background:var(--card); }
+    .occ-chip:active { background:var(--chip-bg); }
+    .occ-chip.on { border-color:var(--pri); background:var(--chip-bg); }
+    .occ-chip .occ-icon { font-size:24px; line-height:1; }
+    .occ-chip .occ-label { font-size:12px; font-weight:600; color:var(--text); }
 
     /* 기록 아이템 */
     .witem {

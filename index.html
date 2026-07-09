@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="목수일지">
+  <meta name="apple-mobile-web-app-title" content="현장일지">
   <meta name="theme-color" content="#D35400">
-  <title>목수 일지</title>
+  <title>현장일지</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <link rel="stylesheet" href="style.css">
@@ -19,7 +19,7 @@
 <!-- 로그인 화면 -->
 <div id="loginScreen">
   <div class="login-icon">🔨</div>
-  <div class="login-title">목수 일지</div>
+  <div class="login-title">현장일지</div>
   <div class="login-sub">현장 작업 및 임금 관리</div>
   <button class="google-btn" onclick="signIn()" id="loginBtn">
     <svg class="google-icon" viewBox="0 0 48 48">
@@ -43,7 +43,7 @@
 
 <div class="hdr">
   <div class="hdr-left">
-    <h1 id="hTit">목수 일지</h1>
+    <h1 id="hTit">현장일지</h1>
     <div id="teamIndicator" class="sub" style="display:none"></div>
   </div>
   <button id="notifBtn" class="hdr-bell" onclick="toggleNotifPanel()" style="display:none" aria-label="알림">
@@ -212,6 +212,18 @@
   <!-- 계정 프로필 -->
   <div class="set-group" id="accountCard"></div>
 
+  <!-- 직종 -->
+  <div class="set-group">
+    <div class="set-item">
+      <div class="set-icon" style="background:rgba(52,120,246,.12)">🛠️</div>
+      <div class="set-text">
+        <div class="set-item-lbl">내 직종</div>
+        <div class="set-item-sub" id="occLabel">미설정</div>
+      </div>
+      <button class="btn-out" style="width:auto;padding:8px 16px;font-size:13px" onclick="openOccupationOv()">변경</button>
+    </div>
+  </div>
+
   <!-- 화면 -->
   <div class="set-group-lbl">화면</div>
   <div class="set-group">
@@ -273,6 +285,15 @@
     <div class="ob-desc" id="obDesc"></div>
     <div class="ob-dots" id="obDots"></div>
     <button class="ob-btn" id="obBtn" onclick="onboardNext()"></button>
+  </div>
+</div>
+
+<!-- 직종 선택 -->
+<div class="ob-ov" id="occupationOv" style="display:none" onclick="if(event.target===this){}">
+  <div class="ob-card">
+    <div class="ob-title">어떤 일을 하세요?</div>
+    <div class="ob-desc" style="margin-bottom:20px">나중에 설정에서 언제든 바꿀 수 있어요</div>
+    <div class="occ-grid" id="occGrid"></div>
   </div>
 </div>
 
@@ -740,7 +761,7 @@ if (_isInApp) {
     var ls = document.getElementById('loginScreen');
     if (!ls) return;
     ls.innerHTML = '<div class="login-icon">🔨</div>'
-      + '<div class="login-title">목수 일지</div>'
+      + '<div class="login-title">현장일지</div>'
       + '<div class="login-sub" style="margin-bottom:32px">현장 작업 및 임금 관리</div>'
       + '<div style="background:rgba(255,255,255,.15);border-radius:16px;padding:24px 20px;text-align:center;line-height:1.9;font-size:14px;">'
       + '⚠️ 카카오톡·인스타 등<br>앱 내 브라우저에서는<br>구글 로그인이 차단됩니다.<br><br>'

@@ -54,8 +54,8 @@ async function calendarFeedHandler(req, res) {
   }
 
   const lines = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//목수일지//KO',
-    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:목수일지 작업일정',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//현장일지//KO',
+    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:현장일지 작업일정',
     'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
   ];
   works.forEach((w) => {
