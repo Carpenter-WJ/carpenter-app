@@ -1,6 +1,7 @@
 // ── Firebase 참조 ──
 const auth = firebase.auth();
 const fsdb = firebase.firestore();
+const storage = firebase.storage();
 fsdb.enablePersistence({synchronizeTabs:true}).catch(function(){});
 
 // 고정 공휴일 (MM-DD)
@@ -64,6 +65,8 @@ let isPremium = false;     // premiumTier !== null (개인 + 팀장 공통 기�
 let isPremiumLeader = false; // premiumTier === 'leader' (팀장 전용 기능 게이트)
 let guestUsageThisMonth = 0; // 이번 달 직접 입력 사용 횟수 (무료 월 2회)
 let calendarFeedToken = null; // 캘린더 구독(webcal) 링크용 토큰
+let photoUsageThisMonth = 0; // 이번 달 작업 사진 업로드 횟수 (무료 월 5장)
+const FREE_PHOTO_LIMIT = 5;
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
 let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
 let wageStmtY = TODAY.getFullYear(), wageStmtM = TODAY.getMonth();
@@ -89,16 +92,112 @@ function toggleInfoSection(force) {
 async function saveDailyNote() {
   if (!selDate || !currentUser) return;
   const text = document.getElementById('inDayMemo').value.trim();
-  if (text) { DB.dailyNotes[selDate] = text; } else { delete DB.dailyNotes[selDate]; }
+  const photos = DB.dailyNotes[selDate]?.photos || [];
+  if (text || photos.length) { DB.dailyNotes[selDate] = {text, photos}; } else { delete DB.dailyNotes[selDate]; }
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
   renderCal();
   try {
     const ref = fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate);
-    if (text) { await ref.set({ text, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+    if (text || photos.length) { await ref.set({ text, photos, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, {merge:true}); }
     else { await ref.delete(); }
     const el = document.getElementById('dayMemoSaved');
     if (el) { el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 1500); }
   } catch(e) { console.error('일일 메모 저장 오류:', e); }
+}
+
+// ── 작업 사진 첨부 ──
+function compressImage(file, maxDim, quality) {
+  maxDim = maxDim || 1600; quality = quality || 0.75;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('파일을 읽을 수 없어요'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('이미지를 열 수 없어요'));
+      img.onload = () => {
+        let {width, height} = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale); height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('압축에 실패했어요')), 'image/jpeg', quality);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function handleDayPhotoSelect(event) {
+  const files = [...(event.target.files || [])];
+  event.target.value = '';
+  if (!files.length || !selDate || !currentUser) return;
+  let remainingFree = isPremium ? Infinity : Math.max(0, FREE_PHOTO_LIMIT - photoUsageThisMonth);
+  if (!isPremium && remainingFree === 0) { openOv('premUpgradeOv'); return; }
+  if (!isPremium && files.length > remainingFree) {
+    alert(`이번 달 사진은 ${remainingFree}장 더 올릴 수 있어요. 프리미엄은 무제한이에요.`);
+    files.length = remainingFree;
+  }
+  showToast('사진 업로드 중...');
+  const note = DB.dailyNotes[selDate] || {text: '', photos: []};
+  if (!note.photos) note.photos = [];
+  const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
+  for (const file of files) {
+    try {
+      const blob = await compressImage(file);
+      const fileName = `${selDate}_${Date.now()}_${Math.random().toString(36).slice(2,7)}.jpg`;
+      const ref = storage.ref(`workPhotos/${currentUser.uid}/${fileName}`);
+      await ref.put(blob, {contentType: 'image/jpeg'});
+      const url = await ref.getDownloadURL();
+      note.photos.push(url);
+      if (!isPremium) {
+        photoUsageThisMonth++;
+        fsdb.collection('users').doc(currentUser.uid).set(
+          {photoUsage: {[_mk]: firebase.firestore.FieldValue.increment(1)}}, {merge: true}
+        ).catch(() => {});
+      }
+    } catch(e) { console.error('사진 업로드 오류:', e); alert('사진 업로드 중 오류가 발생했어요: ' + e.message); }
+  }
+  DB.dailyNotes[selDate] = note;
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  try {
+    await fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate).set(
+      {photos: note.photos, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge: true}
+    );
+  } catch(e) { console.error('사진 정보 저장 오류:', e); }
+  renderDayPhotoGrid();
+  renderCal();
+  showToast('사진이 저장됐어요');
+}
+async function removeDayPhoto(idx) {
+  const note = DB.dailyNotes[selDate];
+  if (!note || !note.photos || !note.photos[idx]) return;
+  if (!confirm('이 사진을 삭제할까요?')) return;
+  const url = note.photos[idx];
+  note.photos.splice(idx, 1);
+  const stillHasContent = !!(note.text || note.photos.length);
+  if (!stillHasContent) delete DB.dailyNotes[selDate];
+  localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  try { await storage.refFromURL(url).delete(); } catch(e) { console.warn('스토리지 파일 삭제 실패:', e.message); }
+  try {
+    const ref = fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate);
+    if (stillHasContent) await ref.set({photos: note.photos, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge: true});
+    else await ref.delete();
+  } catch(e) { console.error('사진 삭제 반영 오류:', e); }
+  renderDayPhotoGrid();
+  renderCal();
+}
+function renderDayPhotoGrid() {
+  const grid = document.getElementById('dayPhotoGrid');
+  if (!grid) return;
+  const photos = DB.dailyNotes[selDate]?.photos || [];
+  grid.innerHTML = photos.map((url, i) => `
+    <div class="day-photo-thumb">
+      <img src="${url}" onclick="window.open('${url}','_blank')">
+      <button onclick="removeDayPhoto(${i})">✕</button>
+    </div>`).join('');
 }
 
 // ── 현장 자동완성 ──
@@ -417,9 +516,10 @@ async function loadTeamData() {
   }
   // 팀 기록과 함께 개인 날일 기록 + 정산도 로드 (isPersonal: true 태그로 구분)
   try {
-    const [personalWorksSnap, personalPaysSnap] = await Promise.all([
+    const [personalWorksSnap, personalPaysSnap, notesSnap] = await Promise.all([
       fsdb.collection('users').doc(myUid).collection('works').get(),
-      fsdb.collection('users').doc(myUid).collection('payments').get()
+      fsdb.collection('users').doc(myUid).collection('payments').get(),
+      fsdb.collection('users').doc(myUid).collection('dailyNotes').get()
     ]);
     if (!personalWorksSnap.empty) {
       const personalWorks = personalWorksSnap.docs.map(d => ({ ...d.data(), isPersonal: true }));
@@ -429,6 +529,11 @@ async function loadTeamData() {
       const personalPays = personalPaysSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       DB.payments = [...DB.payments, ...personalPays];
     }
+    DB.dailyNotes = {};
+    notesSnap.docs.forEach(d => {
+      const nd = d.data();
+      if (nd.text || (nd.photos && nd.photos.length)) DB.dailyNotes[d.id] = {text: nd.text||'', photos: nd.photos||[]};
+    });
   } catch(e) { console.warn('개인 날일 기록 로드 오류:', e.message); }
   // 프리미엄 팀장: maxMembers 자동 업그레이드
   if (isPremiumLeader && isLeader && teamInfo && teamInfo.maxMembers <= 5) {
@@ -495,6 +600,7 @@ async function loadData() {
     const _mk = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;
     guestUsageThisMonth = (userData.guestUsage || {})[_mk] || 0;
     calendarFeedToken = userData.calendarFeedToken || null;
+    photoUsageThisMonth = (userData.photoUsage || {})[_mk] || 0;
     const teamId = userData.teamId || null;
 
     if (teamId) {
@@ -651,7 +757,10 @@ async function loadPersonalData(userRef) {
     ref.collection('dailyNotes').get()
   ]);
   DB.dailyNotes = {};
-  notesSnap.docs.forEach(d => { if(d.data().text) DB.dailyNotes[d.id] = d.data().text; });
+  notesSnap.docs.forEach(d => {
+    const nd = d.data();
+    if (nd.text || (nd.photos && nd.photos.length)) DB.dailyNotes[d.id] = {text: nd.text||'', photos: nd.photos||[]};
+  });
 
   if (!worksSnap.empty || !paysSnap.empty) {
     // 서브컬렉션 방식으로 로드
@@ -1567,8 +1676,9 @@ function openDayOv(ds) {
       </div>
     `).join('');
   }
-  document.getElementById('inDayMemo').value = DB.dailyNotes[ds] || '';
+  document.getElementById('inDayMemo').value = DB.dailyNotes[ds]?.text || '';
   document.getElementById('dayMemoSaved').style.display = 'none';
+  renderDayPhotoGrid();
   openOv('dayOv');
 }
 

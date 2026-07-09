@@ -307,6 +307,9 @@
       <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px">오늘 한 일 <span style="font-weight:400">(개인 메모)</span></div>
       <textarea id="inDayMemo" placeholder="3층 거실 몰딩 작업, 현관 문틀 마감..." rows="3" onblur="saveDailyNote()"></textarea>
       <div id="dayMemoSaved" style="display:none;font-size:11px;color:var(--green);margin-top:4px;text-align:right">저장됨 ✓</div>
+      <div class="day-photo-grid" id="dayPhotoGrid"></div>
+      <input type="file" id="dayPhotoInput" accept="image/*" capture="environment" multiple style="display:none" onchange="handleDayPhotoSelect(event)">
+      <button type="button" class="add-date-btn" style="margin-top:8px" onclick="document.getElementById('dayPhotoInput').click()">+ 사진 추가</button>
     </div>
     <button class="btn-out" style="margin-top:14px" onclick="openWorkOv(null, selDate)">+ 이 날 작업 추가</button>
   </div>
@@ -708,6 +711,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyCciwD5eqMii9pL1XcvMmZEe6hyfIzbL84",
