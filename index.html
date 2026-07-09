@@ -18,7 +18,7 @@
 
 <!-- 로그인 화면 -->
 <div id="loginScreen">
-  <div class="login-icon">🔨</div>
+  <div class="login-icon">⛑️</div>
   <div class="login-title">현장일지</div>
   <div class="login-sub">현장 작업 및 임금 관리</div>
   <button class="google-btn" onclick="signIn()" id="loginBtn">
@@ -237,6 +237,13 @@
         <button id="thm-light" onclick="setTheme('light')">라이트</button>
         <button id="thm-dark" onclick="setTheme('dark')">다크</button>
       </div>
+    </div>
+    <div class="set-item" style="flex-direction:column;align-items:stretch;gap:0">
+      <div style="display:flex;align-items:center;gap:13px">
+        <div class="set-icon" style="background:rgba(230,126,34,.12)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E67E22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="19" r="2.5"/></svg></div>
+        <span class="set-item-lbl">메인 색상</span>
+      </div>
+      <div class="tc-chips" id="themeColorChips"></div>
     </div>
     <div class="set-item">
       <div class="set-icon" style="background:rgba(52,199,89,.12)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 9h18"/><path d="M8 13h8M8 17h5"/></svg></div>
@@ -760,7 +767,7 @@ if (_isInApp) {
   window.addEventListener('DOMContentLoaded', function() {
     var ls = document.getElementById('loginScreen');
     if (!ls) return;
-    ls.innerHTML = '<div class="login-icon">🔨</div>'
+    ls.innerHTML = '<div class="login-icon">⛑️</div>'
       + '<div class="login-title">현장일지</div>'
       + '<div class="login-sub" style="margin-bottom:32px">현장 작업 및 임금 관리</div>'
       + '<div style="background:rgba(255,255,255,.15);border-radius:16px;padding:24px 20px;text-align:center;line-height:1.9;font-size:14px;">'

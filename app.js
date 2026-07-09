@@ -262,6 +262,41 @@ function setTheme(t) { localStorage.setItem('theme', t); applyTheme(); }
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 applyTheme();
 
+// ── 메인 색상 ──
+const THEME_COLORS = [
+  {id:'orange', name:'주황', pri:'#E67E22', dark:'#D35400'},
+  {id:'blue', name:'파랑', pri:'#007AFF', dark:'#0051A8'},
+  {id:'green', name:'초록', pri:'#34C759', dark:'#1F9C43'},
+  {id:'red', name:'빨강', pri:'#E74C3C', dark:'#B93A2C'},
+  {id:'purple', name:'보라', pri:'#8E44AD', dark:'#6C3483'},
+  {id:'teal', name:'틸', pri:'#17A2A2', dark:'#12807F'},
+];
+let themeColor = localStorage.getItem('themeColor') || 'orange';
+function hexToRgb(hex) {
+  const m = hex.replace('#','').match(/.{2}/g).map(x => parseInt(x, 16));
+  return m;
+}
+function applyThemeColor(id) {
+  const c = THEME_COLORS.find(x => x.id === id) || THEME_COLORS[0];
+  themeColor = c.id;
+  localStorage.setItem('themeColor', c.id);
+  const root = document.documentElement.style;
+  root.setProperty('--pri', c.pri);
+  root.setProperty('--dark', c.dark);
+  const [r, g, b] = hexToRgb(c.pri);
+  root.setProperty('--chip-bg', `rgba(${r},${g},${b},.12)`);
+  root.setProperty('--badge-partial', `rgba(${r},${g},${b},.15)`);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', c.dark);
+  renderThemeColorChips();
+}
+function renderThemeColorChips() {
+  const el = document.getElementById('themeColorChips');
+  if (!el) return;
+  el.innerHTML = THEME_COLORS.map(c => `<div class="tc-chip${themeColor===c.id?' on':''}" style="background:${c.pri}" onclick="applyThemeColor('${c.id}')" title="${c.name}"></div>`).join('');
+}
+applyThemeColor(themeColor);
+
 // ── 기본 일당 ──
 let defaultWage = localStorage.getItem('defaultWage') || '';
 let defaultTaxWithheld = localStorage.getItem('defaultTaxWithheld') === 'true';
@@ -295,6 +330,7 @@ function renderSet() {
   const dtt = document.getElementById('defTaxToggle');
   if(dtt) dtt.checked = defaultTaxWithheld;
   updateOccupationSettingLabel();
+  renderThemeColorChips();
   const card = document.getElementById('accountCard');
   if(!card) return;
   if(currentUser) {
@@ -1472,7 +1508,7 @@ function formatDatesShort(dates) {
 // ── 온보딩 ──
 const OB_STEPS = [
   {
-    icon: '🔨',
+    icon: '⛑️',
     title: '현장일지에 오신 걸 환영해요',
     desc: '현장 기록부터 정산·통계·팀 관리까지<br>현장일지 하나로 깔끔하게 정리해드려요'
   },
@@ -2792,7 +2828,7 @@ function openPayDetail(wId) {
   document.getElementById('pdShareBtn').style.display=outstanding>0&&!w.isPaid?'block':'none';
   document.getElementById('pdSite').textContent=w.site;
   const infoLines=[
-    w.workDesc&&`<div style="font-size:12px;color:var(--text2);margin-top:4px;font-weight:600">🔨 ${w.workDesc}</div>`,
+    w.workDesc&&`<div style="font-size:12px;color:var(--text2);margin-top:4px;font-weight:600">🛠️ ${w.workDesc}</div>`,
     w.address&&`<div style="font-size:12px;color:var(--muted);margin-top:4px">📍 ${w.address}</div>`,
     (w.contact||w.phone)&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">👤 ${[w.contact,w.phone].filter(Boolean).join(' · ')}</div>`,
     w.memo&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">📝 ${w.memo}</div>`,
