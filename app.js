@@ -515,11 +515,11 @@ async function loadTeamData() {
     } catch(e) { console.warn('memberExits 로드 실패:', e.message); }
   }
   // 팀 기록과 함께 개인 날일 기록 + 정산도 로드 (isPersonal: true 태그로 구분)
+  // 각각 독립적으로 시도 — 하나가 실패해도(예: dailyNotes 권한 문제) 나머지는 정상 로드되게 분리
   try {
-    const [personalWorksSnap, personalPaysSnap, notesSnap] = await Promise.all([
+    const [personalWorksSnap, personalPaysSnap] = await Promise.all([
       fsdb.collection('users').doc(myUid).collection('works').get(),
-      fsdb.collection('users').doc(myUid).collection('payments').get(),
-      fsdb.collection('users').doc(myUid).collection('dailyNotes').get()
+      fsdb.collection('users').doc(myUid).collection('payments').get()
     ]);
     if (!personalWorksSnap.empty) {
       const personalWorks = personalWorksSnap.docs.map(d => ({ ...d.data(), isPersonal: true }));
@@ -529,12 +529,15 @@ async function loadTeamData() {
       const personalPays = personalPaysSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       DB.payments = [...DB.payments, ...personalPays];
     }
+  } catch(e) { console.warn('개인 날일 기록 로드 오류:', e.message); }
+  try {
+    const notesSnap = await fsdb.collection('users').doc(myUid).collection('dailyNotes').get();
     DB.dailyNotes = {};
     notesSnap.docs.forEach(d => {
       const nd = d.data();
       if (nd.text || (nd.photos && nd.photos.length)) DB.dailyNotes[d.id] = {text: nd.text||'', photos: nd.photos||[]};
     });
-  } catch(e) { console.warn('개인 날일 기록 로드 오류:', e.message); }
+  } catch(e) { console.warn('일일 메모 로드 오류:', e.message); }
   // 프리미엄 팀장: maxMembers 자동 업그레이드
   if (isPremiumLeader && isLeader && teamInfo && teamInfo.maxMembers <= 5) {
     try {
@@ -751,16 +754,18 @@ async function migrateFromDisbandedTeam(userRef, teamDoc) {
 
 async function loadPersonalData(userRef) {
   const ref = userRef || fsdb.collection('users').doc(currentUser.uid);
-  const [worksSnap, paysSnap, notesSnap] = await Promise.all([
+  const [worksSnap, paysSnap] = await Promise.all([
     ref.collection('works').get(),
-    ref.collection('payments').get(),
-    ref.collection('dailyNotes').get()
+    ref.collection('payments').get()
   ]);
   DB.dailyNotes = {};
-  notesSnap.docs.forEach(d => {
-    const nd = d.data();
-    if (nd.text || (nd.photos && nd.photos.length)) DB.dailyNotes[d.id] = {text: nd.text||'', photos: nd.photos||[]};
-  });
+  try {
+    const notesSnap = await ref.collection('dailyNotes').get();
+    notesSnap.docs.forEach(d => {
+      const nd = d.data();
+      if (nd.text || (nd.photos && nd.photos.length)) DB.dailyNotes[d.id] = {text: nd.text||'', photos: nd.photos||[]};
+    });
+  } catch(e) { console.warn('일일 메모 로드 오류:', e.message); }
 
   if (!worksSnap.empty || !paysSnap.empty) {
     // 서브컬렉션 방식으로 로드
