@@ -219,6 +219,18 @@
   <!-- 계정 프로필 -->
   <div class="set-group" id="accountCard"></div>
 
+  <!-- 프리미엄 -->
+  <div class="set-group">
+    <div class="set-item" onclick="openOv('premUpgradeOv')" style="cursor:pointer">
+      <div class="set-icon" style="background:rgba(230,126,34,.12)">✨</div>
+      <div class="set-text">
+        <div class="set-item-lbl">프리미엄</div>
+        <div class="set-item-sub" id="premSettingLabel">더 많은 기능 살펴보기</div>
+      </div>
+      <span style="color:var(--muted);font-size:18px">›</span>
+    </div>
+  </div>
+
   <!-- 직종 -->
   <div class="set-group">
     <div class="set-item">
@@ -229,10 +241,17 @@
       </div>
       <button class="btn-out" style="width:auto;padding:8px 16px;font-size:13px" onclick="openOccupationOv()">변경</button>
     </div>
+    <div class="set-item">
+      <div class="set-icon" style="background:rgba(52,199,89,.12)">🏦</div>
+      <div class="set-text">
+        <div class="set-item-lbl">계좌번호</div>
+        <div class="set-item-sub">정산 요청 시 자동으로 같이 보내드려요</div>
+      </div>
+      <input type="text" id="bankAccountInp" class="set-item-input" placeholder="미설정" style="width:140px" oninput="saveBankAccount(this.value)">
+    </div>
   </div>
 
   <!-- 화면 -->
-  <div class="set-group-lbl">화면</div>
   <div class="set-group">
     <div class="set-item" style="flex-direction:column;align-items:stretch;gap:0;padding-bottom:0">
       <div style="display:flex;align-items:center;gap:13px">

@@ -302,6 +302,7 @@ let defaultWage = localStorage.getItem('defaultWage') || '';
 let defaultTaxWithheld = localStorage.getItem('defaultTaxWithheld') === 'true';
 let userDisplayName = ''; // 사용자 설정 닉네임 (구글 이름과 별개)
 let userOccupation = null; // 직종 (목수/타일/도장 등)
+let userBankAccount = ''; // 정산 요청 시 자동 첨부할 계좌번호
 const OCCUPATIONS = [
   {id:'carpenter', icon:'🔨', label:'목수'},
   {id:'tile', icon:'🧱', label:'타일'},
@@ -330,7 +331,10 @@ function renderSet() {
   const dtt = document.getElementById('defTaxToggle');
   if(dtt) dtt.checked = defaultTaxWithheld;
   updateOccupationSettingLabel();
+  updatePremSettingLabel();
   renderThemeColorChips();
+  const bankInp = document.getElementById('bankAccountInp');
+  if(bankInp) bankInp.value = userBankAccount;
   const card = document.getElementById('accountCard');
   if(!card) return;
   if(currentUser) {
@@ -650,6 +654,7 @@ async function loadData() {
     calendarFeedToken = userData.calendarFeedToken || null;
     photoUsageThisMonth = (userData.photoUsage || {})[_mk] || 0;
     userOccupation = userData.occupation || null;
+    userBankAccount = userData.bankAccount || '';
     const teamId = userData.teamId || null;
 
     if (teamId) {
@@ -1580,6 +1585,19 @@ function updateOccupationSettingLabel() {
   const o = OCCUPATIONS.find(x => x.id === userOccupation);
   el.textContent = o ? `${o.icon} ${o.label}` : '미설정';
 }
+function updatePremSettingLabel() {
+  const el = document.getElementById('premSettingLabel');
+  if (!el) return;
+  el.textContent = premiumTier === 'leader' ? '팀장 프리미엄 이용 중이에요 ✓'
+    : premiumTier === 'personal' ? '프리미엄 이용 중이에요 ✓'
+    : '더 많은 기능 살펴보기';
+}
+async function saveBankAccount(v) {
+  userBankAccount = v.trim();
+  if (!currentUser) return;
+  try { await fsdb.collection('users').doc(currentUser.uid).set({bankAccount: userBankAccount}, {merge: true}); }
+  catch(e) { console.error('계좌번호 저장 오류:', e); }
+}
 
 // ── 탭 ──
 function goTab(tab, btn) {
@@ -2141,12 +2159,12 @@ function markNotifRead(notifId) {
   renderNotifPanel();
 }
 
-async function createNotification(toUid, type, wageId, site) {
+async function createNotification(toUid, type, wageId, site, extra) {
   const msgs = {
     wage_modified: `팀장이 "${site}" 일당을 수정했어요`,
     wage_added: `팀장이 "${site}" 작업을 등록해줬어요`,
     work_deleted: `팀장이 "${site}" 작업 기록을 삭제했어요`,
-    pay_request: `"${site}" 정산을 요청했어요`,
+    pay_request: `"${site}" 정산을 요청했어요${extra ? ` (계좌: ${extra})` : ''}`,
   };
   const msg = msgs[type] || `팀장이 "${site}" 작업을 등록해줬어요`;
   await teamRef().collection('notifications').add({
@@ -2162,7 +2180,7 @@ async function requestPay(workId) {
   const sent = JSON.parse(localStorage.getItem(sentKey) || '[]');
   if(sent.includes(workId)) { showToast('이미 정산 요청을 보낸 현장이에요'); return; }
   try {
-    await createNotification(teamInfo.leaderUid, 'pay_request', workId, w.site);
+    await createNotification(teamInfo.leaderUid, 'pay_request', workId, w.site, userBankAccount);
     localStorage.setItem(sentKey, JSON.stringify([...sent, workId]));
     showToast('팀장에게 정산 요청을 보냈어요');
   } catch(e) {
