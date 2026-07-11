@@ -15,7 +15,6 @@ function nextDay(ds) {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// TODO: 배포 실패 원인 파악 전까지 비활성화 (Cloud Run 권한 문제로 추정, GitHub Actions 로그 확인 필요)
 async function calendarFeedHandler(req, res) {
   const uid = req.query.uid;
   const token = req.query.token;
@@ -78,7 +77,7 @@ async function calendarFeedHandler(req, res) {
   res.set('Cache-Control', 'private, max-age=3600');
   res.send(lines.join('\r\n'));
 }
-// exports.calendarFeed = onRequest({region: 'asia-northeast3'}, calendarFeedHandler);
+exports.calendarFeed = onRequest({region: 'asia-northeast3', invoker: 'public'}, calendarFeedHandler);
 
 exports.generateSiteBriefing = onCall({
   region: 'asia-northeast3',
