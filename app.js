@@ -105,6 +105,16 @@ async function saveDailyNote() {
 }
 
 // ── 작업 사진 첨부 ──
+async function withRetry(fn, retries) {
+  retries = retries == null ? 2 : retries;
+  for (let i = 0; i <= retries; i++) {
+    try { return await fn(); }
+    catch (e) {
+      if (i === retries) throw e;
+      await new Promise(r => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+}
 function compressImage(file, maxDim, quality) {
   maxDim = maxDim || 1600; quality = quality || 0.75;
   return new Promise((resolve, reject) => {
@@ -155,9 +165,12 @@ async function handleWorkPhotoSelect(event) {
     try {
       const blob = await compressImage(file);
       const fileName = `${w.id}_${Date.now()}_${Math.random().toString(36).slice(2,7)}.jpg`;
-      const ref = storage.ref(`workPhotos/${currentUser.uid}/${fileName}`);
-      await ref.put(blob, {contentType: 'image/jpeg'});
-      const url = await ref.getDownloadURL();
+      // 현장 특성상 네트워크가 불안정할 때가 많아 업로드+URL조회를 몇 차례 재시도
+      const url = await withRetry(async () => {
+        const ref = storage.ref(`workPhotos/${currentUser.uid}/${fileName}`);
+        await ref.put(blob, {contentType: 'image/jpeg'});
+        return ref.getDownloadURL();
+      });
       w.photos.push(url);
       if (!isPremium) {
         photoUsageThisMonth++;
@@ -165,7 +178,10 @@ async function handleWorkPhotoSelect(event) {
           {photoUsage: {[_mk]: firebase.firestore.FieldValue.increment(1)}}, {merge: true}
         ).catch(() => {});
       }
-    } catch(e) { console.error('사진 업로드 오류:', e); alert('사진 업로드 중 오류가 발생했어요: ' + e.message); }
+    } catch(e) {
+      console.error('사진 업로드 오류:', e);
+      alert('네트워크가 불안정해서 사진 업로드에 실패했어요. 잠시 후 다시 시도해주세요.');
+    }
   }
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
   try { await saveWorkPhotos(w); } catch(e) { console.error('사진 정보 저장 오류:', e); }

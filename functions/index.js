@@ -35,7 +35,7 @@ async function calendarFeedHandler(req, res) {
 
   const works = [];
   const personalSnap = await userRef.collection('works').get();
-  personalSnap.docs.forEach((d) => works.push(d.data()));
+  personalSnap.docs.forEach((d) => works.push({...d.data(), id: d.id}));
 
   if (userData.teamId) {
     const teamRef = db.collection('teams').doc(userData.teamId);
@@ -48,7 +48,7 @@ async function calendarFeedHandler(req, res) {
     wagesSnap.docs.forEach((d) => {
       const wg = d.data();
       const job = jobById[wg.jobId] || {};
-      works.push({site: job.site || '현장', dates: wg.dates || [], workDesc: wg.workDesc || ''});
+      works.push({site: job.site || '현장', dates: wg.dates || [], workDesc: wg.workDesc || '', id: d.id});
     });
   }
 
@@ -61,7 +61,9 @@ async function calendarFeedHandler(req, res) {
     (w.dates || []).forEach((ds) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return;
       const dtStart = ds.replace(/-/g, '');
-      const eventUid = `${ds}-${w.site || ''}`.replace(/[^a-zA-Z0-9-]/g, '') + `-${uid}@moksujilji`;
+      // 현장명이 대부분 한글이라 예전엔 site를 UID에 섞으면 다 지워져서 같은 날짜에
+      // 현장이 여러 곳이면 ID가 겹치는 문제가 있었음 — 문서 id 기반으로 고유성 보장
+      const eventUid = `${w.id}-${ds}@moksujilji`;
       lines.push('BEGIN:VEVENT');
       lines.push(`UID:${eventUid}`);
       lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`);
