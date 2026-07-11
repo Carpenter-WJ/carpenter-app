@@ -536,6 +536,21 @@
     .prem-card-desc { font-size:13px; color:var(--muted); line-height:1.6; }
     .prem-lock-icon { position:absolute; top:16px; right:16px; font-size:18px; opacity:.4; }
 
+    /* 프리미엄 업그레이드 티어 카드 */
+    .pt-card { position:relative; background:var(--card); border:1.5px solid var(--border); border-radius:18px; padding:20px; margin-bottom:14px; }
+    .pt-card.hl { border-color:var(--pri); background:var(--chip-bg); }
+    .pt-badge { position:absolute; top:-10px; left:16px; background:var(--pri); color:#fff; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
+    .pt-title { font-size:17px; font-weight:800; color:var(--text); }
+    .pt-sub { font-size:12px; color:var(--muted); margin-top:2px; }
+    .pt-price { margin:14px 0; }
+    .pt-strike { font-size:13px; color:var(--muted); text-decoration:line-through; margin-right:6px; }
+    .pt-amt { font-size:24px; font-weight:800; color:var(--text); }
+    .pt-feats { list-style:none; margin:0 0 16px; padding:0; }
+    .pt-feats li { font-size:13px; color:var(--text2); padding:5px 0 5px 22px; position:relative; }
+    .pt-feats li::before { content:'✓'; position:absolute; left:0; color:var(--pri); font-weight:800; }
+    .pt-btn { width:100%; padding:14px; border:none; border-radius:14px; font-size:15px; font-weight:700; cursor:pointer; background:var(--pri); color:#fff; }
+    .pt-current { text-align:center; font-size:13px; font-weight:600; color:var(--green); background:var(--badge-paid); border-radius:12px; padding:12px; margin-bottom:14px; }
+
     /* 인쇄 */
     @media print {
       .tab-bar, .fab, .ov, #ptrInd, #toast, .stat-nav,

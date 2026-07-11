@@ -3779,7 +3779,7 @@ function importData(e) {
 }
 
 // ── 오버레이 ──
-function openOv(id){document.getElementById(id).classList.add('show');}
+function openOv(id){ if(id==='premUpgradeOv') renderPremUpgradeOv(); document.getElementById(id).classList.add('show'); }
 function closeOv(id){document.getElementById(id).classList.remove('show');}
 function closeAll(){document.querySelectorAll('.ov').forEach(o=>o.classList.remove('show'));}
 document.querySelectorAll('.ov').forEach(o=>{
@@ -3946,6 +3946,93 @@ async function regenCalendarFeedToken() {
     renderCalendarFeedOv();
     showToast('링크가 재발급됐어요');
   } catch (e) { alert('재발급 중 오류가 발생했어요: ' + e.message); }
+}
+
+// ── 프리미엄 결제 ──
+const PRICING = {
+  personal: {regular: 14900, promo: 9900},
+  leader: {regular: 19900, promo: 14900},
+};
+// TODO: 최종 배포일 확정되면 채워넣기 — 배포 후 1개월간 오픈 기념가 적용
+const LAUNCH_DATE = null;
+function isPromoActive() {
+  if (!LAUNCH_DATE) return false; // 배포일 미확정 상태에서는 정가만 노출
+  const end = new Date(LAUNCH_DATE);
+  end.setMonth(end.getMonth() + 1);
+  return new Date() < end;
+}
+function getPrice(tier) {
+  const p = PRICING[tier];
+  return isPromoActive() ? p.promo : p.regular;
+}
+function ptCardHtml({title, subtitle, price, originalPrice, features, ctaLabel, ctaOnclick, highlight, badge}) {
+  return `
+    <div class="pt-card${highlight ? ' hl' : ''}">
+      ${badge ? `<div class="pt-badge">${badge}</div>` : ''}
+      <div class="pt-title">${title}</div>
+      <div class="pt-sub">${subtitle}</div>
+      <div class="pt-price">
+        ${originalPrice ? `<span class="pt-strike">${fmtW(originalPrice)}</span>` : ''}
+        <span class="pt-amt">${fmtW(price)}</span>
+      </div>
+      <ul class="pt-feats">${features.map(f => `<li>${f}</li>`).join('')}</ul>
+      <button class="pt-btn" onclick="${ctaOnclick}">${ctaLabel}</button>
+    </div>`;
+}
+function renderPremUpgradeOv(reasonText) {
+  const reasonEl = document.getElementById('premUpgradeReason');
+  if (reasonEl) reasonEl.textContent = reasonText || '더 많은 기능이 필요하신가요?';
+
+  const promo = isPromoActive();
+  const personalPrice = getPrice('personal');
+  const leaderPrice = getPrice('leader');
+  const alreadyPersonal = premiumTier === 'personal';
+  const alreadyLeader = premiumTier === 'leader';
+
+  const personalFeatures = [
+    '전체 기간 통계 + 연간 차트',
+    'CSV · PDF 내보내기',
+    '세금 예상 계산기',
+    '작업 사진 무제한',
+  ];
+  const leaderFeatures = [
+    '프리미엄 전체 기능 포함',
+    '팀원 최대 20명',
+    '직접 입력 무제한',
+    'AI 현장 브리핑 무제한',
+    '인건비 명세서',
+  ];
+
+  let html = '';
+  if (alreadyLeader) {
+    html += `<div class="pt-current">✓ 팀장 프리미엄 이용 중이에요</div>`;
+  } else {
+    if (alreadyPersonal) {
+      html += `<div class="pt-current">✓ 프리미엄 이용 중이에요</div>`;
+    } else {
+      html += ptCardHtml({
+        title: '프리미엄', subtitle: '개인 사용자 · 팀원 공통',
+        price: personalPrice, originalPrice: promo ? PRICING.personal.regular : null,
+        features: personalFeatures, ctaLabel: '프리미엄 시작하기',
+        ctaOnclick: `startCheckout('personal')`,
+      });
+    }
+    const upgradeDiff = alreadyPersonal ? Math.max(0, leaderPrice - personalPrice) : null;
+    html += ptCardHtml({
+      title: '팀장 프리미엄', subtitle: '팀을 운영하는 팀장 전용',
+      price: upgradeDiff != null ? upgradeDiff : leaderPrice,
+      originalPrice: upgradeDiff != null ? null : (promo ? PRICING.leader.regular : null),
+      features: leaderFeatures,
+      ctaLabel: upgradeDiff != null ? `차액 ${fmtW(upgradeDiff)}만 결제하기` : '팀장 프리미엄 시작하기',
+      ctaOnclick: `startCheckout('leader')`,
+      highlight: true,
+      badge: upgradeDiff != null ? '업그레이드' : (promo ? '오픈 기념가' : null),
+    });
+  }
+  document.getElementById('premUpgradeCards').innerHTML = html;
+}
+function startCheckout(tier) {
+  alert('결제 연동을 준비 중이에요. 조금만 기다려주세요!');
 }
 
 // ── Firebase 인증 상태 감지 ──
