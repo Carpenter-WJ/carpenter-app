@@ -77,8 +77,7 @@ async function calendarFeedHandler(req, res) {
   res.set('Cache-Control', 'private, max-age=3600');
   res.send(lines.join('\r\n'));
 }
-// TODO: 배포 실패 원인 파악 전까지 비활성화 (invoker:'public' 추가해도 재현, GitHub Actions 로그 원문 확인 필요)
-// exports.calendarFeed = onRequest({region: 'asia-northeast3', invoker: 'public'}, calendarFeedHandler);
+exports.calendarFeed = onRequest({region: 'asia-northeast3', invoker: 'public'}, calendarFeedHandler);
 
 exports.generateSiteBriefing = onCall({
   region: 'asia-northeast3',
