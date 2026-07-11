@@ -1,11 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="22" fill="#D35400"/>
-  <!-- 안전모 돔 -->
-  <path d="M28 58 C28 32 38 22 50 22 C62 22 72 32 72 58 Z" fill="white"/>
-  <!-- 안전모 챙 -->
-  <ellipse cx="50" cy="58" rx="28" ry="7" fill="white"/>
-  <!-- 상단 통풍구 -->
-  <rect x="45" y="16" width="10" height="9" rx="3" fill="white"/>
-  <!-- 음영선 -->
-  <path d="M28 58 C28 32 38 22 50 22" stroke="rgba(0,0,0,0.12)" stroke-width="3" fill="none" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect width="100" height="100" fill="#D35400"></rect>
+
+  
+  <rect x="44.5" y="19" width="11" height="6.5" rx="3" fill="#B8480A"></rect>
+  <rect x="41" y="23" width="18" height="10" rx="3.5" fill="#C64A00"></rect>
+
+  
+  <rect x="30" y="27" width="40" height="49" rx="7.5" fill="#ffffff"></rect>
+
+  
+  <circle cx="39.5" cy="42" r="2.9" fill="#159A6B"></circle>
+  <rect x="46" y="39.9" width="16.5" height="4" rx="2" fill="#E7D6C9"></rect>
+
+  
+  <circle cx="39.5" cy="53" r="2.9" fill="#159A6B"></circle>
+  <rect x="46" y="50.9" width="16.5" height="4" rx="2" fill="#E7D6C9"></rect>
+
+  
+  <circle cx="40" cy="65.5" r="7.5" fill="#D35400"></circle>
+  <text x="40" y="69.4" text-anchor="middle" font-family="&#39;Pretendard&#39;,&#39;Apple SD Gothic Neo&#39;,sans-serif" font-size="10" font-weight="800" fill="#ffffff">₩</text>
+  <rect x="50.5" y="63.4" width="12" height="4" rx="2" fill="#E7D6C9"></rect>
 </svg>

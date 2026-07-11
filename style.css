@@ -529,8 +529,10 @@
     /* 프리미엄 예고 카드 */
     .prem-section { padding:0 14px 32px; }
     .prem-section-title { font-size:12px; font-weight:700; color:var(--muted); margin-bottom:10px; letter-spacing:.5px; text-transform:uppercase; }
-    .prem-card { background:var(--card); border-radius:16px; padding:20px; margin-bottom:10px; position:relative; overflow:hidden; opacity:.85; }
+    .prem-card { background:var(--card); border-radius:16px; padding:20px; margin-bottom:10px; position:relative; overflow:hidden; opacity:.85; cursor:pointer; transition:opacity .15s; }
+    .prem-card:active { opacity:1; }
     .prem-card::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.03) 8px,rgba(0,0,0,.03) 16px); pointer-events:none; }
+    .prem-cta-btn { width:100%; margin-top:6px; padding:15px; border:none; border-radius:14px; background:var(--pri); color:#fff; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
     .prem-badge { display:inline-block; font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; background:var(--pri); color:#fff; margin-bottom:10px; opacity:.8; }
     .prem-card-title { font-size:15px; font-weight:700; margin-bottom:5px; }
     .prem-card-desc { font-size:13px; color:var(--muted); line-height:1.6; }
