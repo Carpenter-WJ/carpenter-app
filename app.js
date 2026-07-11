@@ -3991,9 +3991,9 @@ function renderPremUpgradeOv(reasonText) {
 
   const personalFeatures = [
     '전체 기간 통계 + 연간 차트',
-    'CSV · PDF 내보내기',
-    '세금 예상 계산기',
-    '작업 사진 무제한',
+    '엑셀·PDF로 작업 내역 내보내기',
+    '종합소득세 예상 계산기',
+    '작업사진 무제한 업로드',
   ];
   const leaderFeatures = [
     '프리미엄 전체 기능 포함',

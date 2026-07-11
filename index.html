@@ -162,11 +162,11 @@
   <div class="export-toolbar" id="exportToolbar" style="display:none">
     <button class="export-btn" onclick="exportCSV()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      CSV 내보내기
+      엑셀로 내보내기
     </button>
     <button class="export-btn" onclick="printReport()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      PDF 출력
+      PDF로 저장
     </button>
     <button class="export-btn" id="wageStmtBtn" onclick="openWageStatement()" style="display:none">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
@@ -174,7 +174,7 @@
     </button>
     <button class="export-btn" onclick="openTaxEstOv()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-      세금 계산기
+      종합소득세 예상 계산기
     </button>
     <!-- 캘린더 구독: calendarFeed 함수 배포 문제로 임시 비활성화 -->
     <button class="export-btn" onclick="openCalendarFeedOv()" style="display:none">
@@ -193,19 +193,19 @@
     <div class="prem-card" onclick="openOv('premUpgradeOv')">
       <div class="prem-lock-icon">🔒</div>
       <div class="prem-badge">PREMIUM</div>
-      <div class="prem-card-title">세금 예상 계산기</div>
+      <div class="prem-card-title">종합소득세 예상 계산기</div>
       <div class="prem-card-desc">올해 수입과 이미 낸 세금으로<br>예상 환급·추가납부액을 계산해드려요</div>
     </div>
     <div class="prem-card" onclick="openOv('premUpgradeOv')">
       <div class="prem-lock-icon">🔒</div>
       <div class="prem-badge">PREMIUM</div>
-      <div class="prem-card-title">CSV · PDF 내보내기</div>
-      <div class="prem-card-desc">월별 작업 내역을 CSV 파일이나<br>PDF 리포트로 내보낼 수 있어요</div>
+      <div class="prem-card-title">엑셀·PDF 내보내기</div>
+      <div class="prem-card-desc">작업 내역을 엑셀 파일로 저장하거나<br>세무사 제출·보관용 PDF 문서로 인쇄할 수 있어요</div>
     </div>
     <div class="prem-card" onclick="openOv('premUpgradeOv')">
       <div class="prem-lock-icon">🔒</div>
       <div class="prem-badge">PREMIUM</div>
-      <div class="prem-card-title">작업 사진 무제한</div>
+      <div class="prem-card-title">작업사진 무제한 업로드</div>
       <div class="prem-card-desc">무료는 월 5장까지, 프리미엄은<br>현장 사진을 무제한으로 남길 수 있어요</div>
     </div>
     <button class="prem-cta-btn" onclick="openOv('premUpgradeOv')">프리미엄 보러가기</button>
@@ -587,7 +587,7 @@
   <div class="sheet">
     <div class="sh-handle"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div class="sh-title" style="margin-bottom:0;font-size:16px">세금 예상 계산기</div>
+      <div class="sh-title" style="margin-bottom:0;font-size:16px">종합소득세 예상 계산기</div>
       <button onclick="closeOv('taxEstOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
     </div>
     <div style="background:rgba(255,149,0,.1);border:1px solid rgba(255,149,0,.3);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.6">
