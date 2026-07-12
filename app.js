@@ -1560,6 +1560,10 @@ function showOnboard() {
   obStep = 0; renderOb();
   document.getElementById('obOv').style.display = 'flex';
 }
+function replayOnboarding() {
+  obStep = 0; renderOb();
+  document.getElementById('obOv').style.display = 'flex';
+}
 function renderOb() {
   const s = OB_STEPS[obStep];
   document.getElementById('obIcon').textContent = s.icon;
