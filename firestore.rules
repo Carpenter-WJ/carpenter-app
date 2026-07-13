@@ -4,7 +4,14 @@ service cloud.firestore {
 
     // ── 기존 개인(솔로) 데이터 — 변경 없음 ──
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && request.auth.uid == uid;
+      // premiumTier는 결제 확인 후 Cloud Function(관리자 SDK)만 기록 —
+      // 클라이언트가 직접 이 필드를 써서 무료로 프리미엄을 부여받는 것을 방지.
+      allow create: if request.auth != null && request.auth.uid == uid
+        && (!('premiumTier' in request.resource.data) || request.resource.data.premiumTier == null);
+      allow update: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['premiumTier']);
+      allow delete: if request.auth != null && request.auth.uid == uid;
 
       match /works/{workId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;

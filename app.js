@@ -4047,22 +4047,9 @@ async function regenCalendarFeedToken() {
 }
 
 // ── 프리미엄 결제 ──
-const PRICING = {
-  personal: {regular: 14900, promo: 9900},
-  leader: {regular: 19900, promo: 14900},
-};
-// TODO: 최종 배포일 확정되면 채워넣기 — 배포 후 1개월간 오픈 기념가 적용
-const LAUNCH_DATE = null;
-function isPromoActive() {
-  if (!LAUNCH_DATE) return false; // 배포일 미확정 상태에서는 정가만 노출
-  const end = new Date(LAUNCH_DATE);
-  end.setMonth(end.getMonth() + 1);
-  return new Date() < end;
-}
-function getPrice(tier) {
-  const p = PRICING[tier];
-  return isPromoActive() ? p.promo : p.regular;
-}
+// PRICING / isPromoActive / getPrice / getCheckoutAmount 는 pricing.js(전역)에서 옴
+// TODO: 토스페이먼츠 개발자센터 발급 클라이언트 키로 교체 (지금은 테스트용 자리표시자)
+const TOSS_CLIENT_KEY = 'test_ck_REPLACE_WITH_REAL_KEY';
 function ptCardHtml({title, subtitle, price, originalPrice, features, ctaLabel, ctaOnclick, highlight, badge}) {
   return `
     <div class="pt-card${highlight ? ' hl' : ''}">
@@ -4115,7 +4102,8 @@ function renderPremUpgradeOv(reasonText) {
         ctaOnclick: `startCheckout('personal')`,
       });
     }
-    const upgradeDiff = alreadyPersonal ? Math.max(0, leaderPrice - personalPrice) : null;
+    const upgradeAmount = getCheckoutAmount('leader', premiumTier);
+    const upgradeDiff = alreadyPersonal ? upgradeAmount : null;
     html += ptCardHtml({
       title: '팀장 프리미엄', subtitle: '팀을 운영하는 팀장 전용',
       price: upgradeDiff != null ? upgradeDiff : leaderPrice,
@@ -4129,8 +4117,51 @@ function renderPremUpgradeOv(reasonText) {
   }
   document.getElementById('premUpgradeCards').innerHTML = html;
 }
-function startCheckout(tier) {
-  alert('결제 연동을 준비 중이에요. 조금만 기다려주세요!');
+let _tossPayments = null;
+function getTossPayments() {
+  if (!_tossPayments) _tossPayments = TossPayments(TOSS_CLIENT_KEY);
+  return _tossPayments;
+}
+async function startCheckout(tier) {
+  if (!currentUser) return;
+  const amount = getCheckoutAmount(tier, premiumTier);
+  if (amount <= 0) { alert('이미 이용 중인 등급이에요.'); return; }
+  const orderId = `premium_${currentUser.uid}_${Date.now()}`;
+  try {
+    await getTossPayments().requestPayment('카드', {
+      amount,
+      orderId,
+      orderName: tier === 'leader' ? '현장일지 팀장 프리미엄' : '현장일지 프리미엄',
+      customerName: userDisplayName || currentUser.displayName || '사용자',
+      successUrl: `${location.origin}${location.pathname}?payment=success&tier=${tier}`,
+      failUrl: `${location.origin}${location.pathname}?payment=fail`,
+    });
+  } catch (e) {
+    if (e.code === 'USER_CANCEL') return;
+    alert('결제 요청 중 오류가 발생했어요: ' + (e.message || e));
+  }
+}
+async function handleTossReturn() {
+  const params = new URLSearchParams(location.search);
+  const status = params.get('payment');
+  if (!status) return;
+  history.replaceState(null, '', location.pathname);
+  if (status !== 'success') return;
+  const paymentKey = params.get('paymentKey');
+  const orderId = params.get('orderId');
+  const amount = Number(params.get('amount'));
+  const tier = params.get('tier');
+  try {
+    const confirmPayment = firebase.functions().httpsCallable('confirmTossPayment');
+    const res = await confirmPayment({paymentKey, orderId, amount, tier});
+    premiumTier = res.data.tier;
+    isPremium = true;
+    isPremiumLeader = premiumTier === 'leader';
+    updatePremSettingLabel();
+    alert('결제가 완료됐어요! 프리미엄이 적용됐습니다. 🎉');
+  } catch (e) {
+    alert('결제 확인 중 문제가 발생했어요. 이미 결제하셨다면 문의해주세요.\n' + (e.message || e));
+  }
 }
 
 // ── Firebase 인증 상태 감지 ──
@@ -4203,6 +4234,7 @@ auth.onAuthStateChanged(user => {
     loginScreen.style.display = 'none';
     loadData();
     initPTR();
+    handleTossReturn();
   } else {
     currentUser = null;
     stopPendingListener();

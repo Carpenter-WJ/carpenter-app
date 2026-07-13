@@ -2,6 +2,7 @@ const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const Anthropic = require('@anthropic-ai/sdk');
+const {getCheckoutAmount} = require('../pricing.js');
 
 initializeApp();
 
@@ -154,4 +155,56 @@ ${info.join('\n')}
   }
 
   return {briefing, isPremium};
+});
+
+exports.confirmTossPayment = onCall({
+  region: 'asia-northeast3',
+  secrets: ['TOSS_SECRET_KEY'],
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const uid = request.auth.uid;
+  const {paymentKey, orderId, amount, tier} = request.data;
+
+  if (!paymentKey || !orderId || !Number.isFinite(amount) || !['personal', 'leader'].includes(tier)) {
+    throw new HttpsError('invalid-argument', '잘못된 요청입니다.');
+  }
+
+  const db = getFirestore();
+  const purchaseRef = db.collection('purchases').doc(orderId);
+  const purchaseSnap = await purchaseRef.get();
+  if (purchaseSnap.exists) {
+    return {success: true, tier: purchaseSnap.data().tier, alreadyProcessed: true};
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const currentTier = userSnap.exists ? (userSnap.data().premiumTier || null) : null;
+
+  const expectedAmount = getCheckoutAmount(tier, currentTier);
+  if (amount !== expectedAmount) {
+    throw new HttpsError('invalid-argument', '결제 금액이 올바르지 않습니다.');
+  }
+
+  const authHeader = 'Basic ' + Buffer.from(`${process.env.TOSS_SECRET_KEY}:`).toString('base64');
+  const tossRes = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
+    method: 'POST',
+    headers: {'Authorization': authHeader, 'Content-Type': 'application/json'},
+    body: JSON.stringify({paymentKey, orderId, amount}),
+  });
+  const tossData = await tossRes.json();
+  if (!tossRes.ok) {
+    throw new HttpsError('failed-precondition', tossData.message || '결제 승인에 실패했습니다.');
+  }
+
+  await db.runTransaction(async (tx) => {
+    tx.set(purchaseRef, {
+      uid, tier, amount, paymentKey, orderId,
+      confirmedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(userRef, {premiumTier: tier}, {merge: true});
+  });
+
+  return {success: true, tier};
 });
