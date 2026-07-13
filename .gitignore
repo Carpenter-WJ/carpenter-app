@@ -1,0 +1,25 @@
+node_modules/
+
+# Capacitor webDir — sync-www.js가 루트 정적 파일에서 재생성함, 소스 아님
+www/
+
+# 네이티브 프로젝트 안의 웹 자산 복사본 — `npx cap sync` 때마다 재생성됨
+android/app/src/main/assets/public/
+ios/App/App/public/
+
+# Android 빌드 산출물
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+
+# iOS 빌드 산출물
+ios/App/Pods/
+ios/App/build/
+ios/App/DerivedData/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcuserstate
