@@ -226,18 +226,23 @@ function getSiteHistory() {
 }
 
 let _siteHistory = [];
+let _siteInputDebounce = null;
 function onSiteInput() {
-  const val = document.getElementById('inSite').value.trim();
-  const dd = document.getElementById('siteDropdown');
-  if (!val) { dd.style.display = 'none'; return; }
-  _siteHistory = getSiteHistory().filter(s => s.site !== val && s.site.toLowerCase().includes(val.toLowerCase()));
-  if (_siteHistory.length === 0) { dd.style.display = 'none'; return; }
-  dd.innerHTML = _siteHistory.map((s, i) => `
-    <div class="sdi" onclick="selectSiteHistory(${i})">
-      <div class="sdi-name">${s.site}</div>
-      ${s.address ? `<div class="sdi-meta">📍 ${s.address}</div>` : ''}
-    </div>`).join('');
-  dd.style.display = '';
+  // 기록 많은 사용자는 매 타이핑마다 전체 목록을 다시 정렬/필터하면 버벅일 수 있어 살짝 지연
+  clearTimeout(_siteInputDebounce);
+  _siteInputDebounce = setTimeout(() => {
+    const val = document.getElementById('inSite').value.trim();
+    const dd = document.getElementById('siteDropdown');
+    if (!val) { dd.style.display = 'none'; return; }
+    _siteHistory = getSiteHistory().filter(s => s.site !== val && s.site.toLowerCase().includes(val.toLowerCase()));
+    if (_siteHistory.length === 0) { dd.style.display = 'none'; return; }
+    dd.innerHTML = _siteHistory.map((s, i) => `
+      <div class="sdi" onclick="selectSiteHistory(${i})">
+        <div class="sdi-name">${s.site}</div>
+        ${s.address ? `<div class="sdi-meta">📍 ${s.address}</div>` : ''}
+      </div>`).join('');
+    dd.style.display = '';
+  }, 120);
 }
 
 function selectSiteHistory(idx) {
@@ -433,6 +438,23 @@ function canDeleteJob(w) {
   const owner = w.ownerUid || w.createdBy;
   return teamRole === 'leader' || owner === currentUser.uid;
 }
+// 팀 wages 문서 + jobs 정보를 개인 works 레코드 형태로 변환 (팀 해체/탈퇴/강제퇴출/
+// 해체팀 자동이관에서 공통으로 사용 — 필드 목록이 4곳에 따로 복붙되어 있으면
+// 새 필드를 추가할 때 일부 경로에서 누락되기 쉬워 하나로 통합함)
+function buildMigratedWork(wageDoc, jobById, teamName) {
+  const wg = wageDoc.data();
+  const job = jobById[wg.jobId] || {};
+  return {
+    id: wageDoc.id, jobId: wg.jobId,
+    site: job.site || '(팀 현장)', address: job.address || '',
+    contact: job.contact || '', phone: job.phone || '',
+    memo: job.memo || '', color: job.color || '#007AFF',
+    dates: wg.dates || [], unit: wg.unit || 1,
+    wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
+    workDesc: wg.workDesc || '',
+    createdBy: wg.createdBy, teamName: teamName
+  };
+}
 
 async function save() {
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
@@ -447,7 +469,7 @@ async function save() {
         if (!canSeeWage(w)) return;
         batch.set(t.collection('wages').doc(w.id), {
           jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, taxWithheld: w.taxWithheld||false, isPaid: w.isPaid,
-          photos: w.photos||[],
+          photos: w.photos||[], workDesc: w.workDesc || '',
           ownerUid: w.ownerUid || w.createdBy,
           createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -530,8 +552,14 @@ async function loadTeamData() {
   const mainJobsQuery = isLeader
     ? t.collection('jobs').get()
     : t.collection('jobs').where('visibility', '==', 'all').get();
+  // 넷 중 하나라도 실패하면 Promise.all이 전체를 reject해서 이미 정상 응답 온 나머지
+  // 데이터까지 못 쓰게 되는 문제(2026-07-09 실제 장애)가 있어 각각 독립적으로 안전 처리
+  const safeGet = async (p, label) => {
+    try { return await p; } catch(e) { console.warn(`${label} 로드 실패:`, e.message); return {docs:[]}; }
+  };
   const [jobsSnap, wagesSnap, paysSnap, membersSnap] = await Promise.all([
-    mainJobsQuery, wagesQuery.get(), paysQuery.get(), t.collection('members').get()
+    safeGet(mainJobsQuery, '현장'), safeGet(wagesQuery.get(), '근무기록'),
+    safeGet(paysQuery.get(), '정산'), safeGet(t.collection('members').get(), '팀원')
   ]);
   let jobsSelected = { docs: [] };
   if (!isLeader) {
@@ -798,16 +826,7 @@ async function migrateFromDisbandedTeam(userRef, teamDoc) {
   }
   const batch = fsdb.batch();
   wagesSnap.docs.forEach(d => {
-    const wg = d.data(); const job = jobById[wg.jobId] || {};
-    batch.set(userRef.collection('works').doc(d.id), {
-      id: d.id, jobId: wg.jobId,
-      site: job.site || '(팀 현장)', address: job.address || '',
-      contact: job.contact || '', phone: job.phone || '',
-      memo: job.memo || '', color: job.color || '#007AFF',
-      dates: wg.dates || [], unit: wg.unit || 1,
-      wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
-      createdBy: wg.createdBy, teamName: tName
-    });
+    batch.set(userRef.collection('works').doc(d.id), buildMigratedWork(d, jobById, tName));
   });
   paysSnap.docs.forEach(d => {
     const p = d.data();
@@ -876,7 +895,7 @@ async function migrateToTeam(teamDoc) {
   for (let i = 0; i < DB.works.length; i += 450) {
     const batch = fsdb.batch();
     DB.works.slice(i, i + 450).forEach(w => {
-      const { wage, isPaid, unit, dates, teamName, taxWithheld, ...jobFields } = w;
+      const { wage, isPaid, unit, dates, teamName, taxWithheld, photos, workDesc, ...jobFields } = w;
       batch.set(teamDoc.collection('jobs').doc(w.id), { ...jobFields, defaultTaxWithheld: !!taxWithheld, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     await batch.commit();
@@ -885,8 +904,8 @@ async function migrateToTeam(teamDoc) {
   for (let i = 0; i < DB.works.length; i += 450) {
     const batch = fsdb.batch();
     DB.works.slice(i, i + 450).forEach(w => {
-      const { wage, isPaid, unit, dates, taxWithheld } = w;
-      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, taxWithheld: !!taxWithheld, isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const { wage, isPaid, unit, dates, taxWithheld, photos, workDesc } = w;
+      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, taxWithheld: !!taxWithheld, photos: photos||[], workDesc: workDesc||'', isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     await batch.commit();
   }
@@ -1018,6 +1037,13 @@ function openTeamRequestsOv() {
   renderJoinRequestList();
 }
 
+// 가입 신청은 팀원 승인 전 단계라 신청자가 자유롭게 입력한 값(이름/메시지)이 팀장
+// 화면에 그대로 렌더링됨 — 이스케이프 없이 innerHTML에 꽂으면 신청 메시지에 스크립트를
+// 심어 팀장 브라우저에서 실행시키는 저장형 XSS가 가능해서 이스케이프 필수
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function renderJoinRequestList() {
   const wrap = document.getElementById('joinRequestList');
   if (!wrap) return;
@@ -1031,8 +1057,8 @@ function renderJoinRequestList() {
         ? `<img class="set-avatar" style="width:40px;height:40px;flex-shrink:0" src="${r.photoURL}" onerror="this.style.display='none'">`
         : `<div class="set-avatar" style="width:40px;height:40px;flex-shrink:0;background:var(--pri);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">👤</div>`}
       <div class="set-text" style="flex:1">
-        <div class="set-item-lbl">${r.displayName || '이름 없음'}</div>
-        ${r.message ? `<div class="set-item-sub" style="white-space:pre-wrap">"${r.message}"</div>` : '<div class="set-item-sub" style="color:var(--muted)">메시지 없음</div>'}
+        <div class="set-item-lbl">${escapeHtml(r.displayName) || '이름 없음'}</div>
+        ${r.message ? `<div class="set-item-sub" style="white-space:pre-wrap">"${escapeHtml(r.message)}"</div>` : '<div class="set-item-sub" style="color:var(--muted)">메시지 없음</div>'}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
         <button class="btn-pri" style="width:auto;padding:6px 14px;font-size:13px" onclick="approveJoinRequest('${r.id}')">승인</button>
@@ -1236,16 +1262,7 @@ async function deleteTeam() {
     if (wagesSnap.docs.length > 0 || paysSnap.docs.length > 0) {
       const batch = fsdb.batch();
       wagesSnap.docs.forEach(d => {
-        const wg = d.data(); const job = jobById[wg.jobId] || {};
-        batch.set(userRef.collection('works').doc(d.id), {
-          id: d.id, jobId: wg.jobId,
-          site: job.site || '(팀 현장)', address: job.address || '',
-          contact: job.contact || '', phone: job.phone || '',
-          memo: job.memo || '', color: job.color || '#007AFF',
-          dates: wg.dates || [], unit: wg.unit || 1,
-          wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
-          createdBy: wg.createdBy, teamName: tName
-        });
+        batch.set(userRef.collection('works').doc(d.id), buildMigratedWork(d, jobById, tName));
       });
       paysSnap.docs.forEach(d => {
         const p = d.data();
@@ -1285,8 +1302,10 @@ async function leaveTeam() {
     const tName = teamInfo.name || '';
     const userRef = fsdb.collection('users').doc(myUid);
 
+    // jobs는 팀원 권한상 visibility='private'인 문서가 하나라도 있으면 무필터 조회가
+    // 통째로 permission-denied 날 수 있어 별도로 격리(실패해도 site 정보만 비게 하고 계속 진행)
     const [jobsSnap, wagesSnap, paysSnap] = await Promise.all([
-      t.collection('jobs').get(),
+      t.collection('jobs').get().catch(e => { console.warn('현장 정보 조회 실패:', e.message); return {docs:[]}; }),
       t.collection('wages').where('ownerUid', '==', myUid).get(),
       t.collection('payments').where('createdBy', '==', myUid).get()
     ]);
@@ -1296,16 +1315,7 @@ async function leaveTeam() {
     if (wagesSnap.docs.length > 0 || paysSnap.docs.length > 0) {
       const batch = fsdb.batch();
       wagesSnap.docs.forEach(d => {
-        const wg = d.data(); const job = jobById[wg.jobId] || {};
-        batch.set(userRef.collection('works').doc(d.id), {
-          id: d.id, jobId: wg.jobId,
-          site: job.site || '(팀 현장)', address: job.address || '',
-          contact: job.contact || '', phone: job.phone || '',
-          memo: job.memo || '', color: job.color || '#007AFF',
-          dates: wg.dates || [], unit: wg.unit || 1,
-          wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
-          createdBy: wg.createdBy, teamName: tName
-        });
+        batch.set(userRef.collection('works').doc(d.id), buildMigratedWork(d, jobById, tName));
       });
       paysSnap.docs.forEach(d => {
         const p = d.data();
@@ -1382,18 +1392,7 @@ async function removeMember(uid) {
     const jobById = {};
     jobsSnap.docs.forEach(d => { jobById[d.id] = d.data(); });
     // 이관 패키지 생성 (퇴출 팀원이 다음 로그인 시 읽어감)
-    const exitWorks = wagesSnap.docs.map(d => {
-      const wg = d.data(); const job = jobById[wg.jobId] || {};
-      return {
-        id: d.id, jobId: wg.jobId,
-        site: job.site || '(팀 현장)', address: job.address || '',
-        contact: job.contact || '', phone: job.phone || '',
-        memo: job.memo || '', color: job.color || '#007AFF',
-        dates: wg.dates || [], unit: wg.unit || 1,
-        wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
-        createdBy: wg.createdBy, teamName: tName
-      };
-    });
+    const exitWorks = wagesSnap.docs.map(d => buildMigratedWork(d, jobById, tName));
     const exitPays = paysSnap.docs.map(d => {
       const p = d.data();
       return { id: d.id, date: p.date, amount: p.amount, note: p.note || '', workId: p.wageId || '', createdBy: p.createdBy };
@@ -1805,8 +1804,9 @@ function openWorkOv(workId, prefillDate) {
   document.getElementById('editWorkId').value=workId||'';
   document.getElementById('workOvTitle').textContent=workId?'작업 수정':'작업 추가';
   let wageEditable=true;
+  const existingWork=workId?DB.works.find(x=>x.id===workId):null;
   if(workId){
-    const w=DB.works.find(x=>x.id===workId);
+    const w=existingWork;
     if(w){
       wageEditable=canSeeWage(w);
       document.getElementById('inSite').value=w.site;
@@ -1850,14 +1850,14 @@ function openWorkOv(workId, prefillDate) {
   const ownerFg=document.getElementById('ownerFg');
   const memberWagesFg=document.getElementById('memberWagesFg');
   const visFg=document.getElementById('visibilityFg');
-  const editingPersonal=workId&&DB.works.find(x=>x.id===workId)?.isPersonal;
+  const editingPersonal=workId&&existingWork?.isPersonal;
   if(dataMode==='team' && teamRole==='leader' && !editingPersonal){
     visFg.style.display='';
     let initVis='all', initShared=[];
     if(workId){
       // 수정 모드: 소유자 이름만 표시, 단일 일당/품수 입력
       ownerFg.style.display=''; memberWagesFg.style.display='none';
-      const w=DB.works.find(x=>x.id===workId);
+      const w=existingWork;
       if(w){
         const om=teamMembers.find(m=>m.uid===(w.ownerUid||w.createdBy));
         document.getElementById('ownerName').textContent=om?(om.uid===currentUser.uid?'나 (팀장)':(om.displayName||'팀원')):'(알 수 없음)';
@@ -3957,7 +3957,7 @@ function genFeedToken() {
   return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
 }
 function calendarFeedUrl(scheme) {
-  return `${scheme}://asia-northeast3-moksuilji.cloudfunctions.net/calendarFeed?uid=${currentUser.uid}&token=${calendarFeedToken}`;
+  return `${scheme}${CALENDAR_FEED_BASE.slice(CALENDAR_FEED_BASE.indexOf(':'))}?uid=${currentUser.uid}&token=${calendarFeedToken}`;
 }
 async function openCalendarFeedOv() {
   if (!calendarFeedToken) {
@@ -4098,6 +4098,11 @@ async function refreshFromCloud() {
       const [ws,ps]=await Promise.all([ref.collection('works').get(),ref.collection('payments').get()]);
       DB.works=ws.docs.map(d=>d.data());
       DB.payments=ps.docs.map(d=>d.data());
+      try {
+        const notesSnap = await ref.collection('dailyNotes').get();
+        DB.dailyNotes = {};
+        notesSnap.docs.forEach(d => { if (d.data().text) DB.dailyNotes[d.id] = d.data().text; });
+      } catch(e) { console.warn('일일 메모 새로고침 실패:', e.message); }
     }
     localStorage.setItem('moksujilji2',JSON.stringify(DB));
     renderCurrentTab();
