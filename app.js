@@ -1575,6 +1575,22 @@ function onboardNext() {
   if(obStep < OB_STEPS.length-1) { obStep++; renderOb(); }
   else { localStorage.setItem('onboarded_v2','1'); document.getElementById('obOv').style.display='none'; }
 }
+(function setupOnboardSwipe() {
+  const card = document.querySelector('#obOv .ob-card');
+  let sx = 0, sy = 0, tracking = false;
+  card.addEventListener('touchstart', e => {
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+  }, {passive:true});
+  card.addEventListener('touchend', e => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) onboardNext();
+    else if (obStep > 0) { obStep--; renderOb(); }
+  }, {passive:true});
+})();
 
 // ── 직종 선택 ──
 function openOccupationOv() {
