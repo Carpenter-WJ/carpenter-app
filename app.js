@@ -3441,7 +3441,7 @@ function renderStat() {
         let w = 0;
         statBase.filter(x=>x.wage!=null&&getWorkStatus(x)!=='planned').forEach(x=>{
           const cnt=(x.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===m;}).length;
-          w+=cnt*Number(x.wage)*Number(x.unit||1);
+          w+=cnt*netWage(x)*Number(x.unit||1);
         });
         monthlyWages.push({m, w});
       }
