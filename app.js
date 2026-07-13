@@ -1554,13 +1554,19 @@ const OB_STEPS = [
   },
 ];
 let obStep = 0;
+function resetObContent() {
+  const content = document.getElementById('obContent');
+  content.classList.add('dragging');
+  content.style.transform = 'translateX(0)';
+  content.style.opacity = '1';
+}
 function showOnboard() {
   if(localStorage.getItem('onboarded_v2')) return;
-  obStep = 0; renderOb();
+  obStep = 0; renderOb(); resetObContent();
   document.getElementById('obOv').style.display = 'flex';
 }
 function replayOnboarding() {
-  obStep = 0; renderOb();
+  obStep = 0; renderOb(); resetObContent();
   document.getElementById('obOv').style.display = 'flex';
 }
 function renderOb() {
@@ -1577,19 +1583,57 @@ function onboardNext() {
 }
 (function setupOnboardSwipe() {
   const card = document.querySelector('#obOv .ob-card');
-  let sx = 0, sy = 0, tracking = false;
+  const content = document.getElementById('obContent');
+  let sx = 0, sy = 0, dx = 0, tracking = false, locked = false;
+
   card.addEventListener('touchstart', e => {
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0;
+    tracking = true; locked = false;
+    content.classList.add('dragging');
   }, {passive:true});
-  card.addEventListener('touchend', e => {
+
+  card.addEventListener('touchmove', e => {
+    if (!tracking) return;
+    dx = e.touches[0].clientX - sx;
+    const dy = e.touches[0].clientY - sy;
+    if (!locked && Math.abs(dy) > Math.abs(dx)) { tracking = false; return; }
+    locked = true;
+    content.style.transform = `translateX(${dx}px)`;
+    content.style.opacity = String(1 - Math.min(Math.abs(dx) / 220, .6));
+  }, {passive:true});
+
+  card.addEventListener('touchend', () => {
     if (!tracking) return;
     tracking = false;
-    const dx = e.changedTouches[0].clientX - sx;
-    const dy = e.changedTouches[0].clientY - sy;
-    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
-    if (dx < 0) onboardNext();
-    else if (obStep > 0) { obStep--; renderOb(); }
-  }, {passive:true});
+    content.classList.remove('dragging');
+    const w = card.getBoundingClientRect().width;
+
+    const slideOutThenSwap = (dir, applyStep) => {
+      content.style.transform = `translateX(${dir * w}px)`;
+      content.style.opacity = '0';
+      setTimeout(() => {
+        applyStep();
+        if (document.getElementById('obOv').style.display === 'none') return;
+        content.classList.add('dragging');
+        content.style.transform = `translateX(${-dir * w}px)`;
+        content.style.opacity = '0';
+        requestAnimationFrame(() => {
+          content.classList.remove('dragging');
+          content.style.transform = 'translateX(0)';
+          content.style.opacity = '1';
+        });
+      }, 240);
+    };
+
+    if (dx < -40) {
+      slideOutThenSwap(-1, onboardNext);
+    } else if (dx > 40 && obStep > 0) {
+      slideOutThenSwap(1, () => { obStep--; renderOb(); });
+    } else {
+      content.style.transform = 'translateX(0)';
+      content.style.opacity = '1';
+    }
+  });
 })();
 
 // ── 직종 선택 ──
