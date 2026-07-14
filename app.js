@@ -4116,6 +4116,13 @@ function renderPremUpgradeOv(reasonText) {
     });
   }
   document.getElementById('premUpgradeCards').innerHTML = html;
+  const consentChk = document.getElementById('premConsentChk');
+  if (consentChk) consentChk.checked = false;
+  updatePremConsentState();
+}
+function updatePremConsentState() {
+  const agreed = document.getElementById('premConsentChk')?.checked;
+  document.querySelectorAll('#premUpgradeCards .pt-btn').forEach(btn => { btn.disabled = !agreed; });
 }
 let _tossPayments = null;
 function getTossPayments() {
@@ -4124,6 +4131,10 @@ function getTossPayments() {
 }
 async function startCheckout(tier) {
   if (!currentUser) return;
+  if (!document.getElementById('premConsentChk')?.checked) {
+    alert('청약철회 제한 동의가 필요해요.');
+    return;
+  }
   const amount = getCheckoutAmount(tier, premiumTier);
   if (amount <= 0) { alert('이미 이용 중인 등급이에요.'); return; }
   const orderId = `premium_${currentUser.uid}_${Date.now()}`;

@@ -546,6 +546,10 @@
     .pt-feats li { font-size:13px; color:var(--text2); padding:5px 0 5px 22px; position:relative; }
     .pt-feats li::before { content:'✓'; position:absolute; left:0; color:var(--pri); font-weight:800; }
     .pt-btn { width:100%; padding:14px; border:none; border-radius:14px; font-size:15px; font-weight:700; cursor:pointer; background:var(--pri); color:#fff; }
+    .pt-btn:disabled { opacity:.4; cursor:not-allowed; }
+    .prem-consent-row { display:flex; align-items:flex-start; gap:8px; margin:14px 2px; font-size:12px; color:var(--text2); line-height:1.5; cursor:pointer; }
+    .prem-consent-row input { margin-top:2px; flex-shrink:0; }
+    .prem-consent-row a { color:var(--pri); }
     .pt-current { text-align:center; font-size:13px; font-weight:600; color:var(--green); background:var(--badge-paid); border-radius:12px; padding:12px; margin-bottom:14px; }
 
     /* 인쇄 */
