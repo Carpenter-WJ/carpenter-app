@@ -4046,10 +4046,11 @@ async function regenCalendarFeedToken() {
   } catch (e) { alert('재발급 중 오류가 발생했어요: ' + e.message); }
 }
 
-// ── 프리미엄 결제 ──
+// ── 프리미엄 결제 (포트원 V2 + 한국결제네트웍스) ──
 // PRICING / isPromoActive / getPrice / getCheckoutAmount 는 pricing.js(전역)에서 옴
-// TODO: 토스페이먼츠 개발자센터 발급 클라이언트 키로 교체 (지금은 테스트용 자리표시자)
-const TOSS_CLIENT_KEY = 'test_ck_REPLACE_WITH_REAL_KEY';
+// TODO: 포트원 콘솔 > 결제 연동 > 연동 정보에서 실제 값으로 교체
+const PORTONE_STORE_ID = 'store-REPLACE_WITH_REAL_ID';
+const PORTONE_CHANNEL_KEY = 'channel-key-REPLACE_WITH_REAL_KEY';
 function ptCardHtml({title, subtitle, price, originalPrice, features, ctaLabel, ctaOnclick, highlight, badge}) {
   return `
     <div class="pt-card${highlight ? ' hl' : ''}">
@@ -4124,11 +4125,6 @@ function updatePremConsentState() {
   const agreed = document.getElementById('premConsentChk')?.checked;
   document.querySelectorAll('#premUpgradeCards .pt-btn').forEach(btn => { btn.disabled = !agreed; });
 }
-let _tossPayments = null;
-function getTossPayments() {
-  if (!_tossPayments) _tossPayments = TossPayments(TOSS_CLIENT_KEY);
-  return _tossPayments;
-}
 async function startCheckout(tier) {
   if (!currentUser) return;
   if (!document.getElementById('premConsentChk')?.checked) {
@@ -4137,34 +4133,35 @@ async function startCheckout(tier) {
   }
   const amount = getCheckoutAmount(tier, premiumTier);
   if (amount <= 0) { alert('이미 이용 중인 등급이에요.'); return; }
-  const orderId = `premium_${currentUser.uid}_${Date.now()}`;
+  const paymentId = `premium_${currentUser.uid}_${Date.now()}`;
   try {
-    await getTossPayments().requestPayment('카드', {
-      amount,
-      orderId,
+    const response = await PortOne.requestPayment({
+      storeId: PORTONE_STORE_ID,
+      channelKey: PORTONE_CHANNEL_KEY,
+      paymentId,
       orderName: tier === 'leader' ? '현장일지 팀장 프리미엄' : '현장일지 프리미엄',
-      customerName: userDisplayName || currentUser.displayName || '사용자',
-      successUrl: `${location.origin}${location.pathname}?payment=success&tier=${tier}`,
-      failUrl: `${location.origin}${location.pathname}?payment=fail`,
+      totalAmount: amount,
+      currency: 'CURRENCY_KRW',
+      payMethod: 'CARD',
+      customer: {
+        fullName: userDisplayName || currentUser.displayName || '사용자',
+        email: currentUser.email || undefined,
+      },
+      redirectUrl: `${location.origin}${location.pathname}?payment=return&tier=${tier}`,
     });
+    if (response.code) {
+      alert('결제 요청 중 오류가 발생했어요: ' + response.message);
+      return;
+    }
+    await confirmPremiumPurchase(response.paymentId, tier);
   } catch (e) {
-    if (e.code === 'USER_CANCEL') return;
     alert('결제 요청 중 오류가 발생했어요: ' + (e.message || e));
   }
 }
-async function handleTossReturn() {
-  const params = new URLSearchParams(location.search);
-  const status = params.get('payment');
-  if (!status) return;
-  history.replaceState(null, '', location.pathname);
-  if (status !== 'success') return;
-  const paymentKey = params.get('paymentKey');
-  const orderId = params.get('orderId');
-  const amount = Number(params.get('amount'));
-  const tier = params.get('tier');
+async function confirmPremiumPurchase(paymentId, tier) {
   try {
-    const confirmPayment = firebase.functions().httpsCallable('confirmTossPayment');
-    const res = await confirmPayment({paymentKey, orderId, amount, tier});
+    const confirmPayment = firebase.functions().httpsCallable('confirmPortOnePayment');
+    const res = await confirmPayment({paymentId, tier});
     premiumTier = res.data.tier;
     isPremium = true;
     isPremiumLeader = premiumTier === 'leader';
@@ -4173,6 +4170,20 @@ async function handleTossReturn() {
   } catch (e) {
     alert('결제 확인 중 문제가 발생했어요. 이미 결제하셨다면 문의해주세요.\n' + (e.message || e));
   }
+}
+async function handlePortOneReturn() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('payment') !== 'return') return;
+  const paymentId = params.get('paymentId');
+  const code = params.get('code');
+  const tier = params.get('tier');
+  history.replaceState(null, '', location.pathname);
+  if (code) {
+    alert('결제가 완료되지 않았어요: ' + (params.get('message') || code));
+    return;
+  }
+  if (!paymentId || !tier) return;
+  await confirmPremiumPurchase(paymentId, tier);
 }
 
 // ── Firebase 인증 상태 감지 ──
@@ -4245,7 +4256,7 @@ auth.onAuthStateChanged(user => {
     loginScreen.style.display = 'none';
     loadData();
     initPTR();
-    handleTossReturn();
+    handlePortOneReturn();
   } else {
     currentUser = null;
     stopPendingListener();

@@ -157,22 +157,22 @@ ${info.join('\n')}
   return {briefing, isPremium};
 });
 
-exports.confirmTossPayment = onCall({
+exports.confirmPortOnePayment = onCall({
   region: 'asia-northeast3',
-  secrets: ['TOSS_SECRET_KEY'],
+  secrets: ['PORTONE_API_SECRET'],
 }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
   const uid = request.auth.uid;
-  const {paymentKey, orderId, amount, tier} = request.data;
+  const {paymentId, tier} = request.data;
 
-  if (!paymentKey || !orderId || !Number.isFinite(amount) || !['personal', 'leader'].includes(tier)) {
+  if (!paymentId || !['personal', 'leader'].includes(tier)) {
     throw new HttpsError('invalid-argument', '잘못된 요청입니다.');
   }
 
   const db = getFirestore();
-  const purchaseRef = db.collection('purchases').doc(orderId);
+  const purchaseRef = db.collection('purchases').doc(paymentId);
   const purchaseSnap = await purchaseRef.get();
   if (purchaseSnap.exists) {
     return {success: true, tier: purchaseSnap.data().tier, alreadyProcessed: true};
@@ -181,26 +181,25 @@ exports.confirmTossPayment = onCall({
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   const currentTier = userSnap.exists ? (userSnap.data().premiumTier || null) : null;
-
   const expectedAmount = getCheckoutAmount(tier, currentTier);
-  if (amount !== expectedAmount) {
-    throw new HttpsError('invalid-argument', '결제 금액이 올바르지 않습니다.');
-  }
 
-  const authHeader = 'Basic ' + Buffer.from(`${process.env.TOSS_SECRET_KEY}:`).toString('base64');
-  const tossRes = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
-    method: 'POST',
-    headers: {'Authorization': authHeader, 'Content-Type': 'application/json'},
-    body: JSON.stringify({paymentKey, orderId, amount}),
+  const portoneRes = await fetch(`https://api.portone.io/payments/${encodeURIComponent(paymentId)}`, {
+    headers: {'Authorization': `PortOne ${process.env.PORTONE_API_SECRET}`},
   });
-  const tossData = await tossRes.json();
-  if (!tossRes.ok) {
-    throw new HttpsError('failed-precondition', tossData.message || '결제 승인에 실패했습니다.');
+  const payment = await portoneRes.json();
+  if (!portoneRes.ok) {
+    throw new HttpsError('failed-precondition', payment.message || '결제 조회에 실패했습니다.');
+  }
+  if (payment.status !== 'PAID') {
+    throw new HttpsError('failed-precondition', '결제가 완료되지 않았습니다.');
+  }
+  if (!payment.amount || payment.amount.total !== expectedAmount) {
+    throw new HttpsError('invalid-argument', '결제 금액이 올바르지 않습니다.');
   }
 
   await db.runTransaction(async (tx) => {
     tx.set(purchaseRef, {
-      uid, tier, amount, paymentKey, orderId,
+      uid, tier, amount: expectedAmount, paymentId,
       confirmedAt: FieldValue.serverTimestamp(),
     });
     tx.set(userRef, {premiumTier: tier}, {merge: true});
