@@ -9,6 +9,9 @@ workflows:
       node: 20
       xcode: latest
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.hyunjangilji.app
     scripts:
       - name: Install npm dependencies
         script: npm install
@@ -16,16 +19,6 @@ workflows:
         script: npm run cap:sync
       - name: Install CocoaPods dependencies
         script: cd ios/App && pod install
-      - name: Initialize keychain
-        script: keychain initialize
-      - name: Fetch (or create) signing certificate and profile
-        script: |
-          app-store-connect fetch-signing-files \
-            com.hyunjangilji.app \
-            --type IOS_APP_STORE \
-            --create
-      - name: Add certificates to keychain
-        script: keychain add-certificates
       - name: Set up automatic code signing
         script: xcode-project use-profiles
       - name: Build ipa
