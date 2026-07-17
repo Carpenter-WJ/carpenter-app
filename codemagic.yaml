@@ -1,0 +1,31 @@
+workflows:
+  ios-capacitor:
+    name: iOS Capacitor Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: development
+        bundle_identifier: com.hyunjangilji.app
+    scripts:
+      - name: Install npm dependencies
+        script: npm install
+      - name: Sync Capacitor (웹 자산 빌드 + 네이티브 프로젝트 동기화)
+        script: npm run cap:sync
+      - name: Install CocoaPods dependencies
+        script: cd ios/App && pod install
+      - name: Set up automatic code signing
+        script: xcode-project use-profiles
+      - name: Build ipa
+        script: |
+          xcode-project build-ipa \
+            --workspace ios/App/App.xcworkspace \
+            --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
