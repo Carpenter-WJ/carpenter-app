@@ -19,6 +19,12 @@ workflows:
         script: npm run cap:sync
       - name: Install CocoaPods dependencies
         script: cd ios/App && pod install
+      - name: Fetch (or create) signing certificate and profile
+        script: |
+          app-store-connect fetch-signing-files \
+            com.hyunjangilji.app \
+            --type IOS_APP_STORE \
+            --create
       - name: Set up automatic code signing
         script: xcode-project use-profiles
       - name: Build ipa
