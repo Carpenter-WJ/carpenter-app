@@ -21,6 +21,12 @@ workflows:
         script: cd ios/App && pod install
       - name: Set up automatic code signing
         script: xcode-project use-profiles
+      - name: Increment build number to avoid duplicate version errors
+        script: |
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-build-number "com.hyunjangilji.app")
+          NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+          echo "Setting CURRENT_PROJECT_VERSION to $NEW_BUILD_NUMBER"
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $NEW_BUILD_NUMBER;/g" ios/App/App.xcodeproj/project.pbxproj
       - name: Build ipa
         script: |
           xcode-project build-ipa \
