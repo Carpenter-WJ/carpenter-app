@@ -8,6 +8,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+        // TODO: 임시 디버깅용 — 원인 파악 후 제거 (릴리즈 빌드에서 사파리 원격 디버깅 활성화)
+        if #available(iOS 16.4, *), let bridgeVC = window?.rootViewController as? CAPBridgeViewController {
+            bridgeVC.webView?.isInspectable = true
+        }
         return true
     }
 
@@ -27,6 +31,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // TODO: 임시 디버깅용 — 원인 파악 후 제거
+        if #available(iOS 16.4, *), let bridgeVC = window?.rootViewController as? CAPBridgeViewController {
+            bridgeVC.webView?.isInspectable = true
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
