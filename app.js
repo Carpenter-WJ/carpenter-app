@@ -1491,7 +1491,11 @@ function renderTeamSettings() {
 }
 
 function doSignOut() {
-  if (confirm('로그아웃 하시겠습니까?')) auth.signOut();
+  if (!confirm('로그아웃 하시겠습니까?')) return;
+  if (window.Capacitor && Capacitor.isNativePlatform()) {
+    FirebaseAuthentication.signOut().catch(() => {});
+  }
+  auth.signOut();
 }
 function todayStr() { const t=new Date(); return ymd(t.getFullYear(), t.getMonth(), t.getDate()); }
 function ymd(y,m,d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }

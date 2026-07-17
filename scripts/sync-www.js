@@ -6,7 +6,11 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const WWW = path.join(ROOT, 'www');
 
-const FILES = ['index.html', 'style.css', 'app.js', 'pricing.js', 'manifest.json', 'icon.svg', 'sw.js'];
+const FILES = [
+  'index.html', 'style.css', 'app.js', 'pricing.js', 'capacitor-bridge.js',
+  'manifest.json', 'icon.svg', 'sw.js',
+  'terms.html', 'privacy.html', 'refund.html',
+];
 const DIRS = ['img'];
 
 fs.rmSync(WWW, {recursive: true, force: true});

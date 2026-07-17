@@ -1,5 +1,8 @@
 node_modules/
 
+# esbuild로 src/capacitor-bridge.js에서 빌드되는 산출물 — CI/로컬에서 재생성됨
+/capacitor-bridge.js
+
 # Capacitor webDir — sync-www.js가 루트 정적 파일에서 재생성함, 소스 아님
 www/
 

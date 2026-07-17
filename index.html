@@ -794,6 +794,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
+<script src="capacitor-bridge.js"></script>
 <script src="pricing.js"></script>
 <script>
 const firebaseConfig = {
@@ -832,7 +833,22 @@ if (_isInApp) {
   });
 }
 
-function signIn() {
+async function signIn() {
+  // 네이티브 앱(Capacitor)에서는 구글이 앱 내장 웹뷰의 OAuth 로그인을 차단하므로
+  // 네이티브 구글 로그인 SDK를 쓰고, 그 결과를 firebase.auth()(웹 SDK)에도 반영한다.
+  if (window.Capacitor && Capacitor.isNativePlatform()) {
+    try {
+      var result = await FirebaseAuthentication.signInWithGoogle();
+      var idToken = result.credential && result.credential.idToken;
+      if (!idToken) throw new Error('구글 인증 토큰을 가져오지 못했어요.');
+      var credential = firebase.auth.GoogleAuthProvider.credential(idToken);
+      await firebase.auth().signInWithCredential(credential);
+    } catch (e) {
+      if (e.message === 'USER_CANCELLED' || e.code === 'auth/cancelled-popup-request') return;
+      alert('로그인 오류: ' + (e.message || e));
+    }
+    return;
+  }
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider).catch(function(e){
     if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
