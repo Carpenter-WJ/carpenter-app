@@ -834,6 +834,10 @@ if (_isInApp) {
 }
 
 async function signIn() {
+  // TODO: 임시 진단용 — 원인 파악 후 제거
+  alert('진단: Capacitor=' + typeof window.Capacitor
+    + ' / isNativePlatform=' + (window.Capacitor ? Capacitor.isNativePlatform() : 'n/a')
+    + ' / FirebaseAuthentication=' + typeof window.FirebaseAuthentication);
   // 네이티브 앱(Capacitor)에서는 구글이 앱 내장 웹뷰의 OAuth 로그인을 차단하므로
   // 네이티브 구글 로그인 SDK를 쓰고, 그 결과를 firebase.auth()(웹 SDK)에도 반영한다.
   if (window.Capacitor && Capacitor.isNativePlatform()) {
