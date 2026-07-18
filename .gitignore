@@ -1,4 +1,5 @@
 node_modules/
+firebase-debug.log
 
 # esbuild로 src/capacitor-bridge.js에서 빌드되는 산출물 — CI/로컬에서 재생성됨
 /capacitor-bridge.js
