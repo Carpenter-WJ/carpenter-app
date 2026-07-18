@@ -12,11 +12,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // didFinishLaunchingWithOptions보다도 이른 시점인 init()에서 실행 (원인 파악 후 정리)
     override init() {
         super.init()
+        let plistPath = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist")
+        NSLog("DIAGNOSTIC: GoogleService-Info.plist path = %@", plistPath ?? "NOT FOUND")
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()
         }
+        NSLog("DIAGNOSTIC: after configure, FirebaseApp.app() = %@", FirebaseApp.app() == nil ? "nil" : "configured, clientID=\(FirebaseApp.app()?.options.clientID ?? "none")")
         if let clientID = FirebaseApp.app()?.options.clientID {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+            NSLog("DIAGNOSTIC: GIDSignIn configured with clientID")
+        } else {
+            NSLog("DIAGNOSTIC: GIDSignIn NOT configured — no clientID available")
         }
     }
 
