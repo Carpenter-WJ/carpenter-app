@@ -899,6 +899,18 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
       await firebase.auth().signInWithCredential(credential);
     } catch (e) {
       debugLog('oauth:exchange-error', {message: e.message, code: e.code, details: e.details, str: String(e)});
+      // TODO: 임시 진단용 — Firebase SDK를 거치지 않고 직접 raw fetch로 실제 HTTP 응답 확인 (원인 파악 후 제거)
+      try {
+        var rawRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeGoogleAuthCode', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({data: {code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI}})
+        });
+        var rawText = await rawRes.text();
+        debugLog('oauth:raw-fetch-result', {status: rawRes.status, ok: rawRes.ok, bodyStart: rawText.slice(0, 500), type: rawRes.type});
+      } catch (e2) {
+        debugLog('oauth:raw-fetch-error', {message: e2.message, name: e2.name, str: String(e2)});
+      }
       alert('로그인 처리 중 오류가 발생했어요: [' + e.code + '] ' + (e.message || e) + (e.details ? ' / details: ' + JSON.stringify(e.details) : ''));
     }
   });
