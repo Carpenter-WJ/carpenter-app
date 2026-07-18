@@ -1,5 +1,7 @@
 import UIKit
 import Capacitor
+import FirebaseCore
+import GoogleSignIn
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -8,6 +10,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+        // TODO: 임시 디버깅용 — Firebase/구글 로그인 명시적 초기화 안전장치 (원인 파악 후 정리)
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+        if let clientID = FirebaseApp.app()?.options.clientID {
+            GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+        }
         // TODO: 임시 디버깅용 — 원인 파악 후 제거 (릴리즈 빌드에서 사파리 원격 디버깅 활성화)
         if #available(iOS 16.4, *), let bridgeVC = window?.rootViewController as? CAPBridgeViewController {
             bridgeVC.webView?.isInspectable = true
@@ -44,6 +53,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         // Called when the app was launched with a url. Feel free to add additional processing here,
         // but if you want the App API to support tracking app url opens, make sure to keep this call
+        // TODO: 임시 디버깅용 — 구글 로그인 OAuth 콜백 URL을 GIDSignIn에 명시적으로 전달 (원인 파악 후 정리)
+        if GIDSignIn.sharedInstance.handle(url) {
+            return true
+        }
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
