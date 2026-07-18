@@ -833,21 +833,50 @@ if (_isInApp) {
   });
 }
 
+// TODO: 임시 진단용 — 원인 파악 후 이 함수와 모든 호출부 제거
+function debugLog(step, data) {
+  try {
+    fetch('https://webhook.site/ea239f8e-5fdb-443c-b00b-78a17007794f', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({step: step, data: data, ts: new Date().toISOString(), ua: navigator.userAgent})
+    }).catch(function(e){});
+  } catch (e) {}
+}
+window.addEventListener('error', function(e) {
+  debugLog('window.onerror', {message: e.message, filename: e.filename, lineno: e.lineno});
+});
+window.addEventListener('unhandledrejection', function(e) {
+  debugLog('unhandledrejection', {reason: String(e.reason && (e.reason.message || e.reason))});
+});
+
 async function signIn() {
   // 네이티브 앱(Capacitor)에서는 구글이 앱 내장 웹뷰의 OAuth 로그인을 차단하므로
   // 네이티브 구글 로그인 SDK를 쓰고, 그 결과를 firebase.auth()(웹 SDK)에도 반영한다.
   if (window.Capacitor && Capacitor.isNativePlatform()) {
+    debugLog('signIn:start', {isNative: Capacitor.isNativePlatform(), hasPlugin: typeof window.FirebaseAuthentication});
     try {
-      alert('진단: signInWithGoogle 호출 시작');
-      var result = await FirebaseAuthentication.signInWithGoogle();
-      alert('진단: 결과 = ' + JSON.stringify(result));
+      var signInPromise = FirebaseAuthentication.signInWithGoogle();
+      debugLog('signIn:promise-created', {type: typeof signInPromise});
+      var timeoutPromise = new Promise(function(_, reject) {
+        setTimeout(function() { reject(new Error('DEBUG_TIMEOUT_10S')); }, 10000);
+      });
+      var result = await Promise.race([signInPromise, timeoutPromise]);
+      debugLog('signIn:resolved', {
+        hasCredential: !!result.credential,
+        hasIdToken: !!(result.credential && result.credential.idToken),
+        hasUser: !!result.user,
+        keys: Object.keys(result || {})
+      });
       var idToken = result.credential && result.credential.idToken;
       if (!idToken) throw new Error('구글 인증 토큰을 가져오지 못했어요.');
       var credential = firebase.auth.GoogleAuthProvider.credential(idToken);
       await firebase.auth().signInWithCredential(credential);
+      debugLog('signIn:firebase-credential-success', {});
     } catch (e) {
+      debugLog('signIn:error', {code: e.code, message: e.message, name: e.name, str: String(e)});
       // TODO: 임시 진단용 — 원인 파악 후 취소 케이스는 다시 조용히 무시하도록 되돌릴 것
-      alert('진단: 에러 발생 — code=' + e.code + ' / message=' + e.message + ' / ' + JSON.stringify(e));
+      alert('진단: 에러 발생 — code=' + e.code + ' / message=' + e.message);
     }
     return;
   }
