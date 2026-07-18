@@ -833,21 +833,6 @@ if (_isInApp) {
   });
 }
 
-// TODO: 임시 진단용 — 원인 파악 후 이 함수와 모든 호출부 제거
-function debugLog(step, data) {
-  try {
-    var payload = JSON.stringify({step: step, data: data, ts: new Date().toISOString()});
-    var url = 'https://webhook.site/968c805e-091d-41eb-93a3-519ceb89fd16?payload=' + encodeURIComponent(payload);
-    fetch(url, {method: 'GET', mode: 'no-cors'}).catch(function(e){});
-  } catch (e) {}
-}
-window.addEventListener('error', function(e) {
-  debugLog('window.onerror', {message: e.message, filename: e.filename, lineno: e.lineno});
-});
-window.addEventListener('unhandledrejection', function(e) {
-  debugLog('unhandledrejection', {reason: String(e.reason && (e.reason.message || e.reason))});
-});
-
 // ── 네이티브 앱용 구글 로그인 (수동 OAuth + PKCE, 시스템 브라우저 사용) ──
 // @capacitor-firebase/authentication의 네이티브 signInWithGoogle()이 원인불명으로
 // 무한 대기하는 문제가 있어, 대신 시스템 브라우저(SFSafariViewController)를 열어
@@ -874,7 +859,6 @@ async function generatePKCE() {
 
 if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
   CapacitorApp.addListener('appUrlOpen', async function(data) {
-    debugLog('appUrlOpen', {url: data.url});
     if (!data.url || data.url.indexOf(GOOGLE_OAUTH_REDIRECT_URI) !== 0) return;
     try { await CapacitorBrowser.close(); } catch (e) {}
     var qIndex = data.url.indexOf('?');
@@ -885,9 +869,8 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
     var verifier = sessionStorage.getItem('oauth_verifier');
     sessionStorage.removeItem('oauth_state');
     sessionStorage.removeItem('oauth_verifier');
-    if (!code) { debugLog('oauth:no-code', {url: data.url}); return; }
+    if (!code) return;
     if (state !== expectedState) {
-      debugLog('oauth:state-mismatch', {got: state, expected: expectedState});
       alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
       return;
     }
@@ -899,15 +882,12 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
       });
       var exchangeJson = await exchangeRes.json();
       if (!exchangeRes.ok || !exchangeJson.idToken) {
-        debugLog('oauth:exchange-error', {status: exchangeRes.status, body: exchangeJson});
         alert('로그인 처리 중 오류가 발생했어요: ' + (exchangeJson.message || exchangeRes.status));
         return;
       }
-      debugLog('oauth:exchange-success', {hasIdToken: true});
       var credential = firebase.auth.GoogleAuthProvider.credential(exchangeJson.idToken);
       await firebase.auth().signInWithCredential(credential);
     } catch (e) {
-      debugLog('oauth:exchange-error', {message: e.message, name: e.name, str: String(e)});
       alert('로그인 처리 중 오류가 발생했어요: ' + (e.message || e));
     }
   });
@@ -932,10 +912,8 @@ async function signIn() {
         state: state
       });
       var authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
-      debugLog('signIn:opening-browser', {authUrl: authUrl});
       await CapacitorBrowser.open({url: authUrl});
     } catch (e) {
-      debugLog('signIn:error', {message: e.message});
       alert('로그인 오류: ' + (e.message || e));
     }
     return;
@@ -962,30 +940,34 @@ function showIOSInstallGuide() {
   alert('홈 화면에 추가하는 방법\n\n① 하단 공유 버튼 (□↑) 탭\n② "홈 화면에 추가" 선택\n③ 오른쪽 위 "추가" 탭\n\n앱처럼 사용할 수 있습니다!');
 }
 
-window.addEventListener('beforeinstallprompt', function(e) {
-  e.preventDefault();
-  _deferredPrompt = e;
-  if (!_isStandalone) {
-    document.getElementById('installBanner').innerHTML =
-      '<button onclick="installApp()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.5);border-radius:12px;color:#fff;padding:13px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">📲 홈 화면에 앱 추가</button>';
-  }
-});
+var _isNativeApp = !!(window.Capacitor && Capacitor.isNativePlatform());
 
-window.addEventListener('appinstalled', function() {
-  document.getElementById('installBanner').innerHTML = '';
-  _deferredPrompt = null;
-});
+if (!_isNativeApp) {
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    _deferredPrompt = e;
+    if (!_isStandalone) {
+      document.getElementById('installBanner').innerHTML =
+        '<button onclick="installApp()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.5);border-radius:12px;color:#fff;padding:13px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">📲 홈 화면에 앱 추가</button>';
+    }
+  });
 
-(function initInstallUI() {
-  if (_isStandalone) {
-    if (_isIOS) document.getElementById('iosStandaloneHint').style.display = 'block';
-    return;
-  }
-  if (_isIOS) {
-    document.getElementById('installBanner').innerHTML =
-      '<button onclick="showIOSInstallGuide()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.5);border-radius:12px;color:#fff;padding:13px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">📲 홈 화면에 앱 추가하는 방법</button>';
-  }
-})()
+  window.addEventListener('appinstalled', function() {
+    document.getElementById('installBanner').innerHTML = '';
+    _deferredPrompt = null;
+  });
+
+  (function initInstallUI() {
+    if (_isStandalone) {
+      if (_isIOS) document.getElementById('iosStandaloneHint').style.display = 'block';
+      return;
+    }
+    if (_isIOS) {
+      document.getElementById('installBanner').innerHTML =
+        '<button onclick="showIOSInstallGuide()" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.5);border-radius:12px;color:#fff;padding:13px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">📲 홈 화면에 앱 추가하는 방법</button>';
+    }
+  })()
+}
 </script>
 <script src="app.js"></script>
 </body>
