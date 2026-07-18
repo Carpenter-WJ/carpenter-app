@@ -848,33 +848,86 @@ window.addEventListener('unhandledrejection', function(e) {
   debugLog('unhandledrejection', {reason: String(e.reason && (e.reason.message || e.reason))});
 });
 
+// ── 네이티브 앱용 구글 로그인 (수동 OAuth + PKCE, 시스템 브라우저 사용) ──
+// @capacitor-firebase/authentication의 네이티브 signInWithGoogle()이 원인불명으로
+// 무한 대기하는 문제가 있어, 대신 시스템 브라우저(SFSafariViewController)를 열어
+// 구글 로그인시키고 리다이렉트 콜백을 직접 받아 Firebase에 연결하는 방식으로 구현.
+var GOOGLE_OAUTH_CLIENT_ID = '774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak.apps.googleusercontent.com';
+var GOOGLE_OAUTH_REDIRECT_URI = 'com.googleusercontent.apps.774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak:/oauth2redirect';
+
+function base64UrlEncode(buffer) {
+  var bytes = new Uint8Array(buffer);
+  var str = '';
+  for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function randomOAuthString(len) {
+  var array = new Uint8Array(len);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+async function generatePKCE() {
+  var verifier = randomOAuthString(64);
+  var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return {verifier: verifier, challenge: base64UrlEncode(digest)};
+}
+
+if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
+  CapacitorApp.addListener('appUrlOpen', async function(data) {
+    debugLog('appUrlOpen', {url: data.url});
+    if (!data.url || data.url.indexOf(GOOGLE_OAUTH_REDIRECT_URI) !== 0) return;
+    try { await CapacitorBrowser.close(); } catch (e) {}
+    var qIndex = data.url.indexOf('?');
+    var params = new URLSearchParams(qIndex >= 0 ? data.url.slice(qIndex + 1) : '');
+    var code = params.get('code');
+    var state = params.get('state');
+    var expectedState = sessionStorage.getItem('oauth_state');
+    var verifier = sessionStorage.getItem('oauth_verifier');
+    sessionStorage.removeItem('oauth_state');
+    sessionStorage.removeItem('oauth_verifier');
+    if (!code) { debugLog('oauth:no-code', {url: data.url}); return; }
+    if (state !== expectedState) {
+      debugLog('oauth:state-mismatch', {got: state, expected: expectedState});
+      alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
+      return;
+    }
+    try {
+      var exchangeFn = firebase.functions().httpsCallable('exchangeGoogleAuthCode');
+      var res = await exchangeFn({code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI});
+      debugLog('oauth:exchange-success', {hasIdToken: !!(res.data && res.data.idToken)});
+      var credential = firebase.auth.GoogleAuthProvider.credential(res.data.idToken);
+      await firebase.auth().signInWithCredential(credential);
+    } catch (e) {
+      debugLog('oauth:exchange-error', {message: e.message, code: e.code});
+      alert('로그인 처리 중 오류가 발생했어요: ' + (e.message || e));
+    }
+  });
+}
+
 async function signIn() {
   // 네이티브 앱(Capacitor)에서는 구글이 앱 내장 웹뷰의 OAuth 로그인을 차단하므로
-  // 네이티브 구글 로그인 SDK를 쓰고, 그 결과를 firebase.auth()(웹 SDK)에도 반영한다.
+  // 시스템 브라우저로 로그인시키고, 그 결과를 firebase.auth()(웹 SDK)에도 반영한다.
   if (window.Capacitor && Capacitor.isNativePlatform()) {
-    debugLog('signIn:start', {isNative: Capacitor.isNativePlatform(), hasPlugin: typeof window.FirebaseAuthentication});
     try {
-      var signInPromise = FirebaseAuthentication.signInWithGoogle();
-      debugLog('signIn:promise-created', {type: typeof signInPromise});
-      var timeoutPromise = new Promise(function(_, reject) {
-        setTimeout(function() { reject(new Error('DEBUG_TIMEOUT_10S')); }, 10000);
+      var pkce = await generatePKCE();
+      var state = randomOAuthString(16);
+      sessionStorage.setItem('oauth_verifier', pkce.verifier);
+      sessionStorage.setItem('oauth_state', state);
+      var params = new URLSearchParams({
+        client_id: GOOGLE_OAUTH_CLIENT_ID,
+        redirect_uri: GOOGLE_OAUTH_REDIRECT_URI,
+        response_type: 'code',
+        scope: 'openid email profile',
+        code_challenge: pkce.challenge,
+        code_challenge_method: 'S256',
+        state: state
       });
-      var result = await Promise.race([signInPromise, timeoutPromise]);
-      debugLog('signIn:resolved', {
-        hasCredential: !!result.credential,
-        hasIdToken: !!(result.credential && result.credential.idToken),
-        hasUser: !!result.user,
-        keys: Object.keys(result || {})
-      });
-      var idToken = result.credential && result.credential.idToken;
-      if (!idToken) throw new Error('구글 인증 토큰을 가져오지 못했어요.');
-      var credential = firebase.auth.GoogleAuthProvider.credential(idToken);
-      await firebase.auth().signInWithCredential(credential);
-      debugLog('signIn:firebase-credential-success', {});
+      var authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+      debugLog('signIn:opening-browser', {authUrl: authUrl});
+      await CapacitorBrowser.open({url: authUrl});
     } catch (e) {
-      debugLog('signIn:error', {code: e.code, message: e.message, name: e.name, str: String(e)});
-      // TODO: 임시 진단용 — 원인 파악 후 취소 케이스는 다시 조용히 무시하도록 되돌릴 것
-      alert('진단: 에러 발생 — code=' + e.code + ' / message=' + e.message);
+      debugLog('signIn:error', {message: e.message});
+      alert('로그인 오류: ' + (e.message || e));
     }
     return;
   }

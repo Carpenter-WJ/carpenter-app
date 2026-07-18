@@ -157,6 +157,39 @@ ${info.join('\n')}
   return {briefing, isPremium};
 });
 
+// 네이티브 앱(Capacitor)에서 시스템 브라우저로 구글 로그인 후 받은 authorization
+// code를 id_token으로 교환. 클라이언트에서 구글 토큰 엔드포인트를 직접 호출하면
+// CORS 문제가 있을 수 있어 서버(Cloud Function)에서 대신 처리. PKCE 방식이라
+// 클라이언트 시크릿 없이도 안전하게 교환 가능 — 로그인 전이라 인증 불필요.
+exports.exchangeGoogleAuthCode = onCall({
+  region: 'asia-northeast3',
+}, async (request) => {
+  const {code, codeVerifier, redirectUri} = request.data;
+  if (!code || !codeVerifier || !redirectUri) {
+    throw new HttpsError('invalid-argument', '잘못된 요청입니다.');
+  }
+
+  const params = new URLSearchParams({
+    code,
+    client_id: '774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak.apps.googleusercontent.com',
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+    code_verifier: codeVerifier,
+  });
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: params.toString(),
+  });
+  const tokenData = await tokenRes.json();
+  if (!tokenRes.ok) {
+    throw new HttpsError('failed-precondition', tokenData.error_description || tokenData.error || '토큰 교환에 실패했습니다.');
+  }
+
+  return {idToken: tokenData.id_token};
+});
+
 exports.confirmPortOnePayment = onCall({
   region: 'asia-northeast3',
   secrets: ['PORTONE_API_SECRET'],
