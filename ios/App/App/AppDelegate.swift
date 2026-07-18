@@ -8,15 +8,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
 
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
-        // TODO: 임시 디버깅용 — Firebase/구글 로그인 명시적 초기화 안전장치 (원인 파악 후 정리)
+    // TODO: 임시 디버깅용 — Firebase를 스토리보드/플러그인 로딩보다 먼저 초기화하기 위해
+    // didFinishLaunchingWithOptions보다도 이른 시점인 init()에서 실행 (원인 파악 후 정리)
+    override init() {
+        super.init()
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()
         }
         if let clientID = FirebaseApp.app()?.options.clientID {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         }
+    }
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Override point for customization after application launch.
         // TODO: 임시 디버깅용 — 원인 파악 후 제거 (릴리즈 빌드에서 사파리 원격 디버깅 활성화)
         if #available(iOS 16.4, *), let bridgeVC = window?.rootViewController as? CAPBridgeViewController {
             bridgeVC.webView?.isInspectable = true
