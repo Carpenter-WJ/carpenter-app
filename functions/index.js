@@ -162,7 +162,7 @@ ${info.join('\n')}
 // http(s)가 아닌 origin에서 CORS 처리가 막히는 것으로 확인되어(사파리 직접
 // 접속은 되는데 웹뷰의 fetch만 "Load failed"), CORS를 직접 제어할 수 있는
 // onRequest(일반 HTTP)로 전환하고 모든 origin을 명시적으로 허용.
-exports.exchangeGoogleAuthCode = onRequest({
+exports.exchangeGoogleAuthCodeV2 = onRequest({
   region: 'asia-northeast3',
   invoker: 'public',
 }, async (req, res) => {

@@ -892,7 +892,7 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
       return;
     }
     try {
-      var exchangeRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeGoogleAuthCode', {
+      var exchangeRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeGoogleAuthCodeV2', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI})
