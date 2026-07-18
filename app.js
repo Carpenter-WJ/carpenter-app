@@ -4164,7 +4164,7 @@ async function startCheckout(tier) {
 }
 async function confirmPremiumPurchase(paymentId, tier) {
   try {
-    const confirmPayment = firebase.functions().httpsCallable('confirmPortOnePayment');
+    const confirmPayment = firebase.app().functions('asia-northeast3').httpsCallable('confirmPortOnePayment');
     const res = await confirmPayment({paymentId, tier});
     premiumTier = res.data.tier;
     isPremium = true;

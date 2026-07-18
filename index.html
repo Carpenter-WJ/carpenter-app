@@ -892,7 +892,7 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
       return;
     }
     try {
-      var exchangeFn = firebase.functions().httpsCallable('exchangeGoogleAuthCode');
+      var exchangeFn = firebase.app().functions('asia-northeast3').httpsCallable('exchangeGoogleAuthCode');
       var res = await exchangeFn({code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI});
       debugLog('oauth:exchange-success', {hasIdToken: !!(res.data && res.data.idToken)});
       var credential = firebase.auth.GoogleAuthProvider.credential(res.data.idToken);
