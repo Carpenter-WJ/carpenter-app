@@ -2,7 +2,7 @@ const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const Anthropic = require('@anthropic-ai/sdk');
-const {getCheckoutAmount} = require('../pricing.js');
+const {getCheckoutAmount} = require('./pricing.js');
 
 initializeApp();
 

@@ -1,6 +1,10 @@
 node_modules/
 firebase-debug.log
 
+# 배포 predeploy 훅이 루트 pricing.js를 여기로 복사함 (배포 패키지가
+# functions/ 폴더 밖은 못 가져가서) — 소스 아님, 매번 재생성됨
+functions/pricing.js
+
 # esbuild로 src/capacitor-bridge.js에서 빌드되는 산출물 — CI/로컬에서 재생성됨
 /capacitor-bridge.js
 

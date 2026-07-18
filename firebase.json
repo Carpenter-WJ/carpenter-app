@@ -4,7 +4,10 @@
     "indexes": "firestore.indexes.json"
   },
   "functions": {
-    "source": "functions"
+    "source": "functions",
+    "predeploy": [
+      "node -e \"require('fs').copyFileSync('pricing.js', 'functions/pricing.js')\""
+    ]
   },
   "storage": {
     "rules": "storage.rules"
