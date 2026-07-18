@@ -177,14 +177,34 @@ exports.exchangeGoogleAuthCode = onCall({
     code_verifier: codeVerifier,
   });
 
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: params.toString(),
-  });
-  const tokenData = await tokenRes.json();
+  let tokenRes;
+  let rawBody;
+  try {
+    tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: params.toString(),
+    });
+    rawBody = await tokenRes.text();
+  } catch (e) {
+    // TODO: 임시 진단용 — 원인 파악 후 정리
+    throw new HttpsError('unavailable', 'DIAGNOSTIC fetch failed: ' + (e.message || String(e)));
+  }
+
+  let tokenData;
+  try {
+    tokenData = JSON.parse(rawBody);
+  } catch (e) {
+    // TODO: 임시 진단용 — 원인 파악 후 정리
+    throw new HttpsError('internal', 'DIAGNOSTIC non-JSON response (status ' + tokenRes.status + '): ' + rawBody.slice(0, 300));
+  }
+
   if (!tokenRes.ok) {
     throw new HttpsError('failed-precondition', tokenData.error_description || tokenData.error || '토큰 교환에 실패했습니다.');
+  }
+  if (!tokenData.id_token) {
+    // TODO: 임시 진단용 — 원인 파악 후 정리
+    throw new HttpsError('internal', 'DIAGNOSTIC no id_token in response: ' + JSON.stringify(tokenData));
   }
 
   return {idToken: tokenData.id_token};
