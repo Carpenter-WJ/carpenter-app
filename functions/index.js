@@ -158,20 +158,30 @@ ${info.join('\n')}
 });
 
 // 네이티브 앱(Capacitor)에서 시스템 브라우저로 구글 로그인 후 받은 authorization
-// code를 id_token으로 교환. 클라이언트에서 구글 토큰 엔드포인트를 직접 호출하면
-// CORS 문제가 있을 수 있어 서버(Cloud Function)에서 대신 처리. PKCE 방식이라
-// 클라이언트 시크릿 없이도 안전하게 교환 가능 — 로그인 전이라 인증 불필요.
-exports.exchangeGoogleAuthCode = onCall({
+// code를 id_token으로 교환. onCall(콜러블)은 capacitor://localhost처럼 표준
+// http(s)가 아닌 origin에서 CORS 처리가 막히는 것으로 확인되어(사파리 직접
+// 접속은 되는데 웹뷰의 fetch만 "Load failed"), CORS를 직접 제어할 수 있는
+// onRequest(일반 HTTP)로 전환하고 모든 origin을 명시적으로 허용.
+exports.exchangeGoogleAuthCode = onRequest({
   region: 'asia-northeast3',
-}, async (request) => {
-  // TODO: 임시 진단용 — 함수 전체를 감싸서 무슨 에러든 클라이언트에 그대로 노출 (원인 파악 후 정리)
+  invoker: 'public',
+}, async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
   try {
-    const data = request.data || {};
-    const code = data.code;
-    const codeVerifier = data.codeVerifier;
-    const redirectUri = data.redirectUri;
+    const body = req.body || {};
+    const code = body.code;
+    const codeVerifier = body.codeVerifier;
+    const redirectUri = body.redirectUri;
     if (!code || !codeVerifier || !redirectUri) {
-      throw new HttpsError('invalid-argument', 'DIAGNOSTIC missing fields: ' + JSON.stringify({hasCode: !!code, hasVerifier: !!codeVerifier, hasRedirect: !!redirectUri}));
+      res.status(400).json({error: 'invalid-argument', message: '잘못된 요청입니다.'});
+      return;
     }
 
     const params = new URLSearchParams({
@@ -193,20 +203,22 @@ exports.exchangeGoogleAuthCode = onCall({
     try {
       tokenData = JSON.parse(rawBody);
     } catch (e) {
-      throw new HttpsError('internal', 'DIAGNOSTIC non-JSON response (status ' + tokenRes.status + '): ' + rawBody.slice(0, 300));
+      res.status(502).json({error: 'internal', message: '구글 응답을 처리하지 못했습니다.'});
+      return;
     }
 
     if (!tokenRes.ok) {
-      throw new HttpsError('failed-precondition', 'DIAGNOSTIC token endpoint error: ' + (tokenData.error_description || tokenData.error || JSON.stringify(tokenData)));
+      res.status(400).json({error: 'failed-precondition', message: tokenData.error_description || tokenData.error || '토큰 교환에 실패했습니다.'});
+      return;
     }
     if (!tokenData.id_token) {
-      throw new HttpsError('internal', 'DIAGNOSTIC no id_token in response: ' + JSON.stringify(tokenData));
+      res.status(502).json({error: 'internal', message: '인증 토큰을 받지 못했습니다.'});
+      return;
     }
 
-    return {idToken: tokenData.id_token};
+    res.status(200).json({idToken: tokenData.id_token});
   } catch (e) {
-    if (e instanceof HttpsError) throw e;
-    throw new HttpsError('internal', 'DIAGNOSTIC unexpected error: ' + (e && e.stack ? e.stack.slice(0, 500) : String(e)));
+    res.status(500).json({error: 'internal', message: e && e.message ? e.message : String(e)});
   }
 });
 

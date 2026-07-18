@@ -892,41 +892,23 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
       return;
     }
     try {
-      var exchangeFn = firebase.app().functions('asia-northeast3').httpsCallable('exchangeGoogleAuthCode');
-      var res = await exchangeFn({code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI});
-      debugLog('oauth:exchange-success', {hasIdToken: !!(res.data && res.data.idToken)});
-      var credential = firebase.auth.GoogleAuthProvider.credential(res.data.idToken);
+      var exchangeRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeGoogleAuthCode', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI})
+      });
+      var exchangeJson = await exchangeRes.json();
+      if (!exchangeRes.ok || !exchangeJson.idToken) {
+        debugLog('oauth:exchange-error', {status: exchangeRes.status, body: exchangeJson});
+        alert('로그인 처리 중 오류가 발생했어요: ' + (exchangeJson.message || exchangeRes.status));
+        return;
+      }
+      debugLog('oauth:exchange-success', {hasIdToken: true});
+      var credential = firebase.auth.GoogleAuthProvider.credential(exchangeJson.idToken);
       await firebase.auth().signInWithCredential(credential);
     } catch (e) {
-      debugLog('oauth:exchange-error', {message: e.message, code: e.code, details: e.details, str: String(e)});
-      // TODO: 임시 진단용 — Firebase SDK를 거치지 않고 직접 raw fetch로 실제 HTTP 응답 확인 (원인 파악 후 제거)
-      try {
-        var rawRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeGoogleAuthCode', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({data: {code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI}})
-        });
-        var rawText = await rawRes.text();
-        debugLog('oauth:raw-fetch-result', {status: rawRes.status, ok: rawRes.ok, bodyStart: rawText.slice(0, 500), type: rawRes.type});
-      } catch (e2) {
-        debugLog('oauth:raw-fetch-error', {message: e2.message, name: e2.name, str: String(e2)});
-      }
-      // TODO: 임시 진단용 — 이미 정상 작동 확인된 다른 함수(calendarFeed)도 연결되는지 비교 (원인 파악 후 제거)
-      try {
-        var cfRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/calendarFeed?uid=test&token=test');
-        var cfText = await cfRes.text();
-        debugLog('oauth:calendarfeed-test-result', {status: cfRes.status, bodyStart: cfText.slice(0, 200)});
-      } catch (e4) {
-        debugLog('oauth:calendarfeed-test-error', {message: e4.message, name: e4.name, str: String(e4)});
-      }
-      // TODO: 임시 진단용 — 파이어베이스랑 무관한 일반 공개 API도 연결되는지 비교 (원인 파악 후 제거)
-      try {
-        var pubRes = await fetch('https://jsonplaceholder.typicode.com/todos/1');
-        debugLog('oauth:public-api-test-result', {status: pubRes.status, ok: pubRes.ok});
-      } catch (e5) {
-        debugLog('oauth:public-api-test-error', {message: e5.message, name: e5.name, str: String(e5)});
-      }
-      alert('로그인 처리 중 오류가 발생했어요: [' + e.code + '] ' + (e.message || e) + (e.details ? ' / details: ' + JSON.stringify(e.details) : ''));
+      debugLog('oauth:exchange-error', {message: e.message, name: e.name, str: String(e)});
+      alert('로그인 처리 중 오류가 발생했어요: ' + (e.message || e));
     }
   });
 }
