@@ -164,50 +164,50 @@ ${info.join('\n')}
 exports.exchangeGoogleAuthCode = onCall({
   region: 'asia-northeast3',
 }, async (request) => {
-  const {code, codeVerifier, redirectUri} = request.data;
-  if (!code || !codeVerifier || !redirectUri) {
-    throw new HttpsError('invalid-argument', '잘못된 요청입니다.');
-  }
-
-  const params = new URLSearchParams({
-    code,
-    client_id: '774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak.apps.googleusercontent.com',
-    redirect_uri: redirectUri,
-    grant_type: 'authorization_code',
-    code_verifier: codeVerifier,
-  });
-
-  let tokenRes;
-  let rawBody;
+  // TODO: 임시 진단용 — 함수 전체를 감싸서 무슨 에러든 클라이언트에 그대로 노출 (원인 파악 후 정리)
   try {
-    tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    const data = request.data || {};
+    const code = data.code;
+    const codeVerifier = data.codeVerifier;
+    const redirectUri = data.redirectUri;
+    if (!code || !codeVerifier || !redirectUri) {
+      throw new HttpsError('invalid-argument', 'DIAGNOSTIC missing fields: ' + JSON.stringify({hasCode: !!code, hasVerifier: !!codeVerifier, hasRedirect: !!redirectUri}));
+    }
+
+    const params = new URLSearchParams({
+      code,
+      client_id: '774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak.apps.googleusercontent.com',
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+      code_verifier: codeVerifier,
+    });
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
       body: params.toString(),
     });
-    rawBody = await tokenRes.text();
+    const rawBody = await tokenRes.text();
+
+    let tokenData;
+    try {
+      tokenData = JSON.parse(rawBody);
+    } catch (e) {
+      throw new HttpsError('internal', 'DIAGNOSTIC non-JSON response (status ' + tokenRes.status + '): ' + rawBody.slice(0, 300));
+    }
+
+    if (!tokenRes.ok) {
+      throw new HttpsError('failed-precondition', 'DIAGNOSTIC token endpoint error: ' + (tokenData.error_description || tokenData.error || JSON.stringify(tokenData)));
+    }
+    if (!tokenData.id_token) {
+      throw new HttpsError('internal', 'DIAGNOSTIC no id_token in response: ' + JSON.stringify(tokenData));
+    }
+
+    return {idToken: tokenData.id_token};
   } catch (e) {
-    // TODO: 임시 진단용 — 원인 파악 후 정리
-    throw new HttpsError('unavailable', 'DIAGNOSTIC fetch failed: ' + (e.message || String(e)));
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError('internal', 'DIAGNOSTIC unexpected error: ' + (e && e.stack ? e.stack.slice(0, 500) : String(e)));
   }
-
-  let tokenData;
-  try {
-    tokenData = JSON.parse(rawBody);
-  } catch (e) {
-    // TODO: 임시 진단용 — 원인 파악 후 정리
-    throw new HttpsError('internal', 'DIAGNOSTIC non-JSON response (status ' + tokenRes.status + '): ' + rawBody.slice(0, 300));
-  }
-
-  if (!tokenRes.ok) {
-    throw new HttpsError('failed-precondition', tokenData.error_description || tokenData.error || '토큰 교환에 실패했습니다.');
-  }
-  if (!tokenData.id_token) {
-    // TODO: 임시 진단용 — 원인 파악 후 정리
-    throw new HttpsError('internal', 'DIAGNOSTIC no id_token in response: ' + JSON.stringify(tokenData));
-  }
-
-  return {idToken: tokenData.id_token};
 });
 
 exports.confirmPortOnePayment = onCall({

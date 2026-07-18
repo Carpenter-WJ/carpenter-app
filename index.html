@@ -898,8 +898,8 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
       var credential = firebase.auth.GoogleAuthProvider.credential(res.data.idToken);
       await firebase.auth().signInWithCredential(credential);
     } catch (e) {
-      debugLog('oauth:exchange-error', {message: e.message, code: e.code});
-      alert('로그인 처리 중 오류가 발생했어요: ' + (e.message || e));
+      debugLog('oauth:exchange-error', {message: e.message, code: e.code, details: e.details, str: String(e)});
+      alert('로그인 처리 중 오류가 발생했어요: [' + e.code + '] ' + (e.message || e) + (e.details ? ' / details: ' + JSON.stringify(e.details) : ''));
     }
   });
 }
