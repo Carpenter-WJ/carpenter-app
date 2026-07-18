@@ -911,6 +911,21 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
       } catch (e2) {
         debugLog('oauth:raw-fetch-error', {message: e2.message, name: e2.name, str: String(e2)});
       }
+      // TODO: 임시 진단용 — 이미 정상 작동 확인된 다른 함수(calendarFeed)도 연결되는지 비교 (원인 파악 후 제거)
+      try {
+        var cfRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/calendarFeed?uid=test&token=test');
+        var cfText = await cfRes.text();
+        debugLog('oauth:calendarfeed-test-result', {status: cfRes.status, bodyStart: cfText.slice(0, 200)});
+      } catch (e4) {
+        debugLog('oauth:calendarfeed-test-error', {message: e4.message, name: e4.name, str: String(e4)});
+      }
+      // TODO: 임시 진단용 — 파이어베이스랑 무관한 일반 공개 API도 연결되는지 비교 (원인 파악 후 제거)
+      try {
+        var pubRes = await fetch('https://jsonplaceholder.typicode.com/todos/1');
+        debugLog('oauth:public-api-test-result', {status: pubRes.status, ok: pubRes.ok});
+      } catch (e5) {
+        debugLog('oauth:public-api-test-error', {message: e5.message, name: e5.name, str: String(e5)});
+      }
       alert('로그인 처리 중 오류가 발생했어요: [' + e.code + '] ' + (e.message || e) + (e.details ? ' / details: ' + JSON.stringify(e.details) : ''));
     }
   });
