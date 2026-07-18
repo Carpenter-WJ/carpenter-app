@@ -6,7 +6,7 @@
   "functions": {
     "source": "functions",
     "predeploy": [
-      "node -e \"require('fs').copyFileSync('pricing.js', 'functions/pricing.js')\""
+      "node scripts/copy-pricing-for-functions.js"
     ]
   },
   "storage": {
