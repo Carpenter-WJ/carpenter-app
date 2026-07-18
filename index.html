@@ -836,11 +836,9 @@ if (_isInApp) {
 // TODO: 임시 진단용 — 원인 파악 후 이 함수와 모든 호출부 제거
 function debugLog(step, data) {
   try {
-    fetch('https://webhook.site/ea239f8e-5fdb-443c-b00b-78a17007794f', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({step: step, data: data, ts: new Date().toISOString(), ua: navigator.userAgent})
-    }).catch(function(e){});
+    var payload = JSON.stringify({step: step, data: data, ts: new Date().toISOString()});
+    var url = 'https://webhook.site/ea239f8e-5fdb-443c-b00b-78a17007794f?payload=' + encodeURIComponent(payload);
+    fetch(url, {method: 'GET', mode: 'no-cors'}).catch(function(e){});
   } catch (e) {}
 }
 window.addEventListener('error', function(e) {
