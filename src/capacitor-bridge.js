@@ -4,8 +4,10 @@ import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
+import { Purchases } from '@revenuecat/purchases-capacitor';
 
 window.Capacitor = Capacitor;
 window.FirebaseAuthentication = FirebaseAuthentication;
 window.CapacitorBrowser = Browser;
 window.CapacitorApp = App;
+window.Purchases = Purchases;

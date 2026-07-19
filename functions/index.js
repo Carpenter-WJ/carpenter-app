@@ -272,3 +272,60 @@ exports.confirmPortOnePayment = onCall({
 
   return {success: true, tier};
 });
+
+// 네이티브 앱(iOS/안드로이드) 인앱결제(RevenueCat) 확인. 상품 가격은 스토어
+// 카탈로그가 고정하므로(포트원과 달리 클라이언트가 금액을 정하지 않음) 금액 검증은
+// 불필요 — "이 uid가 지금 요청한 tier의 entitlement를 실제로 보유하고 있는가"만
+// RevenueCat 서버에 직접 조회해서 확인한다.
+exports.confirmNativePurchase = onCall({
+  region: 'asia-northeast3',
+  secrets: ['REVENUECAT_SECRET_API_KEY'],
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const uid = request.auth.uid;
+  const {tier} = request.data || {};
+  if (!['personal', 'leader'].includes(tier)) {
+    throw new HttpsError('invalid-argument', '잘못된 요청입니다.');
+  }
+
+  const rcRes = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(uid)}`, {
+    headers: {'Authorization': `Bearer ${process.env.REVENUECAT_SECRET_API_KEY}`},
+  });
+  const rcData = await rcRes.json();
+  if (!rcRes.ok) {
+    throw new HttpsError('failed-precondition', rcData.message || '구매 확인에 실패했습니다.');
+  }
+
+  const entitlement = rcData.subscriber && rcData.subscriber.entitlements && rcData.subscriber.entitlements[tier];
+  const isActive = !!entitlement && (!entitlement.expires_date || new Date(entitlement.expires_date) > new Date());
+  if (!isActive) {
+    throw new HttpsError('failed-precondition', '구매 내역을 확인할 수 없습니다.');
+  }
+
+  const productId = entitlement.product_identifier;
+  const txns = (rcData.subscriber.non_subscriptions && rcData.subscriber.non_subscriptions[productId]) || [];
+  const lastTxn = txns[txns.length - 1];
+  const transactionId = (lastTxn && lastTxn.id) || `${uid}_${productId}`;
+  const purchaseId = `rc_${transactionId}`;
+
+  const db = getFirestore();
+  const purchaseRef = db.collection('purchases').doc(purchaseId);
+  const userRef = db.collection('users').doc(uid);
+
+  const result = await db.runTransaction(async (tx) => {
+    const purchaseSnap = await tx.get(purchaseRef);
+    if (purchaseSnap.exists) {
+      return {tier: purchaseSnap.data().tier, alreadyProcessed: true};
+    }
+    tx.set(purchaseRef, {
+      uid, tier, provider: 'revenuecat', store: (lastTxn && lastTxn.store) || null,
+      productId, transactionId, confirmedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(userRef, {premiumTier: tier}, {merge: true});
+    return {tier, alreadyProcessed: false};
+  });
+
+  return {success: true, tier: result.tier};
+});

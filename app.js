@@ -1494,6 +1494,7 @@ function doSignOut() {
   if (!confirm('로그아웃 하시겠습니까?')) return;
   if (window.Capacitor && Capacitor.isNativePlatform()) {
     FirebaseAuthentication.signOut().catch(() => {});
+    Purchases.logOut().catch(() => {});
   }
   auth.signOut();
 }
@@ -4050,12 +4051,49 @@ async function regenCalendarFeedToken() {
   } catch (e) { alert('재발급 중 오류가 발생했어요: ' + e.message); }
 }
 
-// ── 프리미엄 결제 (포트원 V2 + 한국결제네트웍스) ──
+// ── 프리미엄 결제 (포트원 V2 + 한국결제네트웍스 / 웹 전용) ──
 // PRICING / isPromoActive / getPrice / getCheckoutAmount 는 pricing.js(전역)에서 옴
 // TODO: 포트원 콘솔 > 결제 연동 > 연동 정보에서 실제 값으로 교체
 const PORTONE_STORE_ID = 'store-REPLACE_WITH_REAL_ID';
 const PORTONE_CHANNEL_KEY = 'channel-key-REPLACE_WITH_REAL_KEY';
-function ptCardHtml({title, subtitle, price, originalPrice, features, ctaLabel, ctaOnclick, highlight, badge}) {
+
+// ── 프리미엄 결제 (RevenueCat / 네이티브 앱 전용) ──
+// 앱스토어·플레이스토어는 비구독 상품에 "차액 결제"가 없어서, 이미 개인
+// 프리미엄인 사용자가 팀장으로 업그레이드할 때만 별도의 저가 업그레이드 상품을
+// 노출한다(premium_leader_upgrade). 서버(confirmNativePurchase)는 어떤 상품으로
+// 샀는지와 무관하게 "지금 leader entitlement를 실제로 갖고 있는가"만 확인함.
+// TODO: RevenueCat 콘솔에서 발급받은 실제 공개 SDK 키로 교체
+const REVENUECAT_IOS_API_KEY = 'appl_REPLACE_WITH_REAL_KEY';
+const REVENUECAT_ANDROID_API_KEY = 'goog_REPLACE_WITH_REAL_KEY';
+const IAP_PRODUCT_IDS = {
+  personal: 'premium_personal',
+  leader: 'premium_leader',
+  leaderUpgrade: 'premium_leader_upgrade',
+};
+let _nativeOfferings = null;
+async function configureNativePurchases(uid) {
+  if (!(window.Capacitor && Capacitor.isNativePlatform())) return;
+  try {
+    const apiKey = Capacitor.getPlatform() === 'ios' ? REVENUECAT_IOS_API_KEY : REVENUECAT_ANDROID_API_KEY;
+    await Purchases.configure({apiKey, appUserID: uid});
+    const offerings = await Purchases.getOfferings();
+    _nativeOfferings = offerings.current || null;
+  } catch (e) { _nativeOfferings = null; }
+}
+async function getNativeOfferings() {
+  if (_nativeOfferings) return _nativeOfferings;
+  try {
+    const offerings = await Purchases.getOfferings();
+    _nativeOfferings = offerings.current || null;
+  } catch (e) {}
+  return _nativeOfferings;
+}
+function nativeProductIdFor(tier) {
+  if (tier === 'leader' && premiumTier === 'personal') return IAP_PRODUCT_IDS.leaderUpgrade;
+  return IAP_PRODUCT_IDS[tier];
+}
+
+function ptCardHtml({title, subtitle, price, originalPrice, priceLabel, features, ctaLabel, ctaOnclick, highlight, badge}) {
   return `
     <div class="pt-card${highlight ? ' hl' : ''}">
       ${badge ? `<div class="pt-badge">${badge}</div>` : ''}
@@ -4063,7 +4101,7 @@ function ptCardHtml({title, subtitle, price, originalPrice, features, ctaLabel, 
       <div class="pt-sub">${subtitle}</div>
       <div class="pt-price">
         ${originalPrice ? `<span class="pt-strike">${fmtW(originalPrice)}</span>` : ''}
-        <span class="pt-amt">${fmtW(price)}</span>
+        <span class="pt-amt">${priceLabel || fmtW(price)}</span>
       </div>
       <ul class="pt-feats">${features.map(f => `<li>${f}</li>`).join('')}</ul>
       <button class="pt-btn" onclick="${ctaOnclick}">${ctaLabel}</button>
@@ -4073,9 +4111,10 @@ function renderPremUpgradeOv(reasonText) {
   const reasonEl = document.getElementById('premUpgradeReason');
   if (reasonEl) reasonEl.textContent = reasonText || '더 많은 기능이 필요하신가요?';
 
-  const promo = isPromoActive();
-  const personalPrice = getPrice('personal');
-  const leaderPrice = getPrice('leader');
+  const isNativeApp = window.Capacitor && Capacitor.isNativePlatform();
+  const consentRow = document.getElementById('premConsentRow');
+  if (consentRow) consentRow.style.display = isNativeApp ? 'none' : '';
+
   const alreadyPersonal = premiumTier === 'personal';
   const alreadyLeader = premiumTier === 'leader';
 
@@ -4096,7 +4135,12 @@ function renderPremUpgradeOv(reasonText) {
   let html = '';
   if (alreadyLeader) {
     html += `<div class="pt-current">✓ 팀장 프리미엄 이용 중이에요</div>`;
+  } else if (isNativeApp) {
+    html += renderNativePremCards(alreadyPersonal, personalFeatures, leaderFeatures);
   } else {
+    const promo = isPromoActive();
+    const personalPrice = getPrice('personal');
+    const leaderPrice = getPrice('leader');
     if (alreadyPersonal) {
       html += `<div class="pt-current">✓ 프리미엄 이용 중이에요</div>`;
     } else {
@@ -4125,12 +4169,45 @@ function renderPremUpgradeOv(reasonText) {
   if (consentChk) consentChk.checked = false;
   updatePremConsentState();
 }
+// 앱스토어/플레이스토어는 정가가 스토어 카탈로그에 고정돼 있어서, pricing.js의
+// 하드코딩된 KRW 숫자 대신 RevenueCat이 돌려주는 실제 상품 가격 문자열을 그대로
+// 표시한다(화면 표시 가격과 실제 결제 금액이 어긋나지 않도록). 오퍼링을 아직 못
+// 불러왔으면(오프라인 등) pricing.js 정가를 폴백으로 보여준다.
+function renderNativePremCards(alreadyPersonal, personalFeatures, leaderFeatures) {
+  const pkgFor = (productId) => _nativeOfferings && _nativeOfferings.availablePackages.find(p => p.product.identifier === productId);
+  let html = '';
+  if (!alreadyPersonal) {
+    const pkg = pkgFor(IAP_PRODUCT_IDS.personal);
+    html += ptCardHtml({
+      title: '프리미엄', subtitle: '개인 사용자 · 팀원 공통',
+      price: PRICING.personal.regular, priceLabel: pkg ? pkg.product.priceString : null,
+      features: personalFeatures, ctaLabel: '프리미엄 시작하기',
+      ctaOnclick: `startCheckout('personal')`,
+    });
+  }
+  const leaderPkg = pkgFor(nativeProductIdFor('leader'));
+  html += ptCardHtml({
+    title: '팀장 프리미엄', subtitle: '팀을 운영하는 팀장 전용',
+    price: PRICING.leader.regular, priceLabel: leaderPkg ? leaderPkg.product.priceString : null,
+    features: leaderFeatures,
+    ctaLabel: alreadyPersonal ? '팀장으로 업그레이드' : '팀장 프리미엄 시작하기',
+    ctaOnclick: `startCheckout('leader')`,
+    highlight: true,
+    badge: alreadyPersonal ? '업그레이드' : null,
+  });
+  return html;
+}
 function updatePremConsentState() {
-  const agreed = document.getElementById('premConsentChk')?.checked;
+  const isNativeApp = window.Capacitor && Capacitor.isNativePlatform();
+  const agreed = isNativeApp || document.getElementById('premConsentChk')?.checked;
   document.querySelectorAll('#premUpgradeCards .pt-btn').forEach(btn => { btn.disabled = !agreed; });
 }
 async function startCheckout(tier) {
   if (!currentUser) return;
+  if (window.Capacitor && Capacitor.isNativePlatform()) {
+    await startNativeCheckout(tier);
+    return;
+  }
   if (!document.getElementById('premConsentChk')?.checked) {
     alert('청약철회 제한 동의가 필요해요.');
     return;
@@ -4166,6 +4243,37 @@ async function confirmPremiumPurchase(paymentId, tier) {
   try {
     const confirmPayment = firebase.app().functions('asia-northeast3').httpsCallable('confirmPortOnePayment');
     const res = await confirmPayment({paymentId, tier});
+    premiumTier = res.data.tier;
+    isPremium = true;
+    isPremiumLeader = premiumTier === 'leader';
+    updatePremSettingLabel();
+    alert('결제가 완료됐어요! 프리미엄이 적용됐습니다. 🎉');
+  } catch (e) {
+    alert('결제 확인 중 문제가 발생했어요. 이미 결제하셨다면 문의해주세요.\n' + (e.message || e));
+  }
+}
+async function startNativeCheckout(tier) {
+  try {
+    const offerings = await getNativeOfferings();
+    if (!offerings) { alert('상품 정보를 불러오지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
+    const productId = nativeProductIdFor(tier);
+    const pkg = offerings.availablePackages.find(p => p.product.identifier === productId);
+    if (!pkg) { alert('상품을 찾을 수 없어요. 잠시 후 다시 시도해주세요.'); return; }
+    const {customerInfo} = await Purchases.purchasePackage({aPackage: pkg});
+    if (!customerInfo.entitlements.active[tier]) {
+      alert('구매가 완료되지 않았어요.');
+      return;
+    }
+    await confirmNativePurchase(tier);
+  } catch (e) {
+    if (e.userCancelled) return;
+    alert('결제 요청 중 오류가 발생했어요: ' + (e.message || e));
+  }
+}
+async function confirmNativePurchase(tier) {
+  try {
+    const confirmFn = firebase.app().functions('asia-northeast3').httpsCallable('confirmNativePurchase');
+    const res = await confirmFn({tier});
     premiumTier = res.data.tier;
     isPremium = true;
     isPremiumLeader = premiumTier === 'leader';
@@ -4261,6 +4369,7 @@ auth.onAuthStateChanged(user => {
     loadData();
     initPTR();
     handlePortOneReturn();
+    configureNativePurchases(user.uid);
   } else {
     currentUser = null;
     stopPendingListener();
