@@ -56,10 +56,9 @@
 			</array>
 		</dict>
 		<dict>
-			<!-- TODO: 카카오 디벨로퍼스에서 발급받은 네이티브 앱 키로 교체 (kakao{네이티브 앱 키} 형식) -->
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>kakaoREPLACE_WITH_NATIVE_APP_KEY</string>
+				<string>kakao4c7161f9f8b8349d951c03acd51a48e3</string>
 			</array>
 		</dict>
 	</array>

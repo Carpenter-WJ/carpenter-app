@@ -22,13 +22,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- 카카오 로그인 리다이렉트용 커스텀 URL 스킴.
-                 TODO: 카카오 디벨로퍼스에서 발급받은 네이티브 앱 키로 교체 -->
+            <!-- 카카오 로그인 리다이렉트용 커스텀 URL 스킴 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="kakaoREPLACE_WITH_NATIVE_APP_KEY" />
+                <data android:scheme="kakao4c7161f9f8b8349d951c03acd51a48e3" />
             </intent-filter>
 
         </activity>

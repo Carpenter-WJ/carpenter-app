@@ -229,7 +229,7 @@ exports.exchangeGoogleAuthCodeV2 = onRequest({
 // 로그인하게 한다. uid는 카카오 고유 ID 기반으로 고정(kakao:{카카오ID})해서
 // 같은 사람이 다시 로그인하면 항상 같은 Firebase 계정으로 연결됨.
 // TODO: 카카오 디벨로퍼스에서 발급받은 REST API 키로 교체
-const KAKAO_REST_API_KEY = 'REPLACE_WITH_KAKAO_REST_API_KEY';
+const KAKAO_REST_API_KEY = 'a3369f716e4b4affaf82d8288c92f86c';
 exports.exchangeKakaoAuthV2 = onRequest({
   region: 'asia-northeast3',
   invoker: 'public',
