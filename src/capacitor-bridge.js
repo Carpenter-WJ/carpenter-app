@@ -7,6 +7,7 @@ import { App } from '@capacitor/app';
 import { Purchases } from '@revenuecat/purchases-capacitor';
 import { Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { SignInWithApple } from '@capacitor-community/apple-sign-in';
 
 window.Capacitor = Capacitor;
 window.FirebaseAuthentication = FirebaseAuthentication;
@@ -15,3 +16,4 @@ window.CapacitorApp = App;
 window.Purchases = Purchases;
 window.CapacitorFilesystem = Filesystem;
 window.CapacitorShare = Share;
+window.SignInWithApple = SignInWithApple;

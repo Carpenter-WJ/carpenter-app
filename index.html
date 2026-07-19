@@ -29,6 +29,12 @@
     </svg>
     Google로 로그인
   </button>
+  <button class="apple-btn" onclick="signInWithApple()" id="appleLoginBtn" style="display:none">
+     Apple로 로그인
+  </button>
+  <button class="kakao-btn" onclick="signInWithKakao()" id="kakaoLoginBtn">
+    카카오로 로그인
+  </button>
   <div id="iosStandaloneHint" style="display:none;margin-top:20px;font-size:13px;opacity:.75;text-align:center;line-height:1.8;">
     아이폰 앱에서 재로그인이 필요하면<br>
     Safari로 열어서 로그인해주세요
@@ -841,6 +847,16 @@ if (_isInApp) {
 var GOOGLE_OAUTH_CLIENT_ID = '774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak.apps.googleusercontent.com';
 var GOOGLE_OAUTH_REDIRECT_URI = 'com.googleusercontent.apps.774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak:/oauth2redirect';
 
+// ── 카카오 로그인 (구글과 동일한 시스템 브라우저+PKCE 방식, 웹은 리다이렉트) ──
+// 카카오는 Firebase 기본 제공 프로바이더가 아니라서 서버(exchangeKakaoAuthV2)가
+// 토큰을 커스텀 토큰으로 바꿔줌. 이메일은 카카오 "비즈 앱 심사" 없이는 못 받아서
+// 요청하지 않음 — 카카오로 가입한 사용자는 구글/애플 계정과 자동 병합되지 않음(알려진 제약).
+// TODO: 카카오 디벨로퍼스에서 발급받은 값으로 교체 (REST API 키는 functions/index.js와 동일하게 맞출 것)
+var KAKAO_REST_API_KEY = 'REPLACE_WITH_KAKAO_REST_API_KEY';
+var KAKAO_NATIVE_APP_KEY = 'REPLACE_WITH_NATIVE_APP_KEY';
+var KAKAO_OAUTH_REDIRECT_URI = 'kakao' + KAKAO_NATIVE_APP_KEY + '://oauth';
+var KAKAO_WEB_REDIRECT_URI = location.origin + location.pathname;
+
 function base64UrlEncode(buffer) {
   var bytes = new Uint8Array(buffer);
   var str = '';
@@ -858,6 +874,32 @@ async function generatePKCE() {
   return {verifier: verifier, challenge: base64UrlEncode(digest)};
 }
 
+// 같은 이메일로 다른 방법(구글↔애플)에 이미 가입돼 있으면 Firebase가
+// account-exists-with-different-credential 에러를 던진다(파이어베이스 콘솔에서
+// "동일 이메일 계정 연결" 켜져 있어야 함). 조용히 새 계정을 또 만들지 않도록
+// 안내만 하고 막는다 — 완전 자동 연결(linkWithCredential)까지는 하지 않음.
+function handleAuthLinkError(e) {
+  if (!e || e.code !== 'auth/account-exists-with-different-credential') return false;
+  var email = (e.customData && e.customData.email) || e.email;
+  if (!email) {
+    alert('이미 다른 방법으로 가입된 계정이에요. 처음 가입할 때 쓴 방법으로 로그인해주세요.');
+    return true;
+  }
+  firebase.auth().fetchSignInMethodsForEmail(email).then(function(methods) {
+    var label = methods.indexOf('google.com') !== -1 ? 'Google'
+      : methods.indexOf('apple.com') !== -1 ? 'Apple' : '기존';
+    alert('이미 ' + label + ' 로그인으로 가입된 계정이에요. ' + label + '(으)로 로그인해주세요.');
+  }).catch(function() {
+    alert('이미 다른 방법으로 가입된 계정이에요. 처음 가입할 때 쓴 방법으로 로그인해주세요.');
+  });
+  return true;
+}
+
+if (window.Capacitor && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+  var appleBtn = document.getElementById('appleLoginBtn');
+  if (appleBtn) appleBtn.style.display = '';
+}
+
 // target="_blank" 링크(이용약관/개인정보처리방침/환불정책 등)는 네이티브 웹뷰에
 // 새 탭 개념이 없어서 클릭해도 그냥 아무 반응이 없다 — 시스템 브라우저로 열어준다.
 if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorBrowser) {
@@ -869,38 +911,106 @@ if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorBrowser)
   });
 }
 
-if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
-  CapacitorApp.addListener('appUrlOpen', async function(data) {
-    if (!data.url || data.url.indexOf(GOOGLE_OAUTH_REDIRECT_URI) !== 0) return;
-    try { await CapacitorBrowser.close(); } catch (e) {}
-    var qIndex = data.url.indexOf('?');
-    var params = new URLSearchParams(qIndex >= 0 ? data.url.slice(qIndex + 1) : '');
-    var code = params.get('code');
-    var state = params.get('state');
-    var expectedState = sessionStorage.getItem('oauth_state');
-    var verifier = sessionStorage.getItem('oauth_verifier');
-    sessionStorage.removeItem('oauth_state');
-    sessionStorage.removeItem('oauth_verifier');
-    if (!code) return;
-    if (state !== expectedState) {
-      alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
+async function handleGoogleAuthRedirect(url) {
+  try { await CapacitorBrowser.close(); } catch (e) {}
+  var qIndex = url.indexOf('?');
+  var params = new URLSearchParams(qIndex >= 0 ? url.slice(qIndex + 1) : '');
+  var code = params.get('code');
+  var state = params.get('state');
+  var expectedState = sessionStorage.getItem('oauth_state');
+  var verifier = sessionStorage.getItem('oauth_verifier');
+  sessionStorage.removeItem('oauth_state');
+  sessionStorage.removeItem('oauth_verifier');
+  if (!code) return;
+  if (state !== expectedState) {
+    alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
+    return;
+  }
+  try {
+    var exchangeRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeGoogleAuthCodeV2', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI})
+    });
+    var exchangeJson = await exchangeRes.json();
+    if (!exchangeRes.ok || !exchangeJson.idToken) {
+      alert('로그인 처리 중 오류가 발생했어요: ' + (exchangeJson.message || exchangeRes.status));
       return;
     }
-    try {
-      var exchangeRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeGoogleAuthCodeV2', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code: code, codeVerifier: verifier, redirectUri: GOOGLE_OAUTH_REDIRECT_URI})
-      });
-      var exchangeJson = await exchangeRes.json();
-      if (!exchangeRes.ok || !exchangeJson.idToken) {
-        alert('로그인 처리 중 오류가 발생했어요: ' + (exchangeJson.message || exchangeRes.status));
-        return;
-      }
-      var credential = firebase.auth.GoogleAuthProvider.credential(exchangeJson.idToken);
-      await firebase.auth().signInWithCredential(credential);
-    } catch (e) {
-      alert('로그인 처리 중 오류가 발생했어요: ' + (e.message || e));
+    var credential = firebase.auth.GoogleAuthProvider.credential(exchangeJson.idToken);
+    await firebase.auth().signInWithCredential(credential);
+  } catch (e) {
+    if (handleAuthLinkError(e)) return;
+    alert('로그인 처리 중 오류가 발생했어요: ' + (e.message || e));
+  }
+}
+
+async function exchangeKakaoCode(code, verifier, redirectUri) {
+  try {
+    var exchangeRes = await fetch('https://asia-northeast3-moksuilji.cloudfunctions.net/exchangeKakaoAuthV2', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code: code, codeVerifier: verifier, redirectUri: redirectUri})
+    });
+    var exchangeJson = await exchangeRes.json();
+    if (!exchangeRes.ok || !exchangeJson.customToken) {
+      alert('로그인 처리 중 오류가 발생했어요: ' + (exchangeJson.message || exchangeRes.status));
+      return;
+    }
+    var userCred = await firebase.auth().signInWithCustomToken(exchangeJson.customToken);
+    if (exchangeJson.nickname && userCred.user && !userCred.user.displayName) {
+      try { await userCred.user.updateProfile({displayName: exchangeJson.nickname}); } catch (e2) {}
+    }
+  } catch (e) {
+    alert('로그인 처리 중 오류가 발생했어요: ' + (e.message || e));
+  }
+}
+
+async function handleKakaoAuthRedirect(url) {
+  try { await CapacitorBrowser.close(); } catch (e) {}
+  var qIndex = url.indexOf('?');
+  var params = new URLSearchParams(qIndex >= 0 ? url.slice(qIndex + 1) : '');
+  var code = params.get('code');
+  var state = params.get('state');
+  var expectedState = sessionStorage.getItem('kakao_oauth_state');
+  var verifier = sessionStorage.getItem('kakao_oauth_verifier');
+  sessionStorage.removeItem('kakao_oauth_state');
+  sessionStorage.removeItem('kakao_oauth_verifier');
+  if (!code) return;
+  if (state !== expectedState) {
+    alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
+    return;
+  }
+  await exchangeKakaoCode(code, verifier, KAKAO_OAUTH_REDIRECT_URI);
+}
+
+// 웹에서는 카카오 인가 페이지로 완전히 페이지가 이동했다가 돌아오므로,
+// 로그인 전(비로그인 상태)에도 항상 확인해야 해서 auth 상태와 무관하게 호출됨.
+async function handleKakaoReturn() {
+  var params = new URLSearchParams(location.search);
+  var code = params.get('code');
+  if (!code) return;
+  var state = params.get('state');
+  var expectedState = sessionStorage.getItem('kakao_oauth_state');
+  var verifier = sessionStorage.getItem('kakao_oauth_verifier');
+  sessionStorage.removeItem('kakao_oauth_state');
+  sessionStorage.removeItem('kakao_oauth_verifier');
+  history.replaceState(null, '', location.pathname);
+  if (state !== expectedState) {
+    alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
+    return;
+  }
+  await exchangeKakaoCode(code, verifier, KAKAO_WEB_REDIRECT_URI);
+}
+handleKakaoReturn();
+
+if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
+  CapacitorApp.addListener('appUrlOpen', async function(data) {
+    if (!data.url) return;
+    if (data.url.indexOf(GOOGLE_OAUTH_REDIRECT_URI) === 0) {
+      await handleGoogleAuthRedirect(data.url);
+    } else if (data.url.indexOf(KAKAO_OAUTH_REDIRECT_URI) === 0) {
+      await handleKakaoAuthRedirect(data.url);
     }
   });
 }
@@ -937,8 +1047,69 @@ async function signIn() {
       firebase.auth().signInWithRedirect(provider);
       return;
     }
+    if (handleAuthLinkError(e)) return;
     alert('로그인 오류 (' + e.code + ')\n' + e.message);
   });
+}
+
+// Apple 로그인 — iOS 전용. 네이티브 ASAuthorizationAppleIDProvider를 쓰는
+// @capacitor-community/apple-sign-in 플러그인이 identityToken을 바로 주므로,
+// 구글과 달리 서버(Cloud Function) 왕복 없이 Firebase에 바로 credential로 로그인.
+async function signInWithApple() {
+  try {
+    var result = await SignInWithApple.authorize({
+      clientId: 'com.hyunjangilji.app',
+      // iOS 네이티브 플로우에선 실제로 안 쓰이지만(ASAuthorizationController가
+      // 처리) 플러그인 인터페이스상 유효한 HTTPS URL을 요구해서 더미로 지정.
+      redirectURI: 'https://carpenter-wj.github.io/carpenter-app/',
+      scopes: 'email name',
+      state: randomOAuthString(16)
+    });
+    var r = result.response;
+    var provider = new firebase.auth.OAuthProvider('apple.com');
+    var credential = provider.credential({idToken: r.identityToken});
+    var userCred = await firebase.auth().signInWithCredential(credential);
+    // 애플은 identityToken에 이름을 안 담아줘서(개인정보 보호), 최초 로그인
+    // 응답에만 별도로 담겨오는 givenName/familyName을 displayName에 반영해둬야
+    // app.js의 로그인 후 처리(customName 저장)가 정상적으로 이름을 채워줌.
+    if ((r.givenName || r.familyName) && userCred.user && !userCred.user.displayName) {
+      var fullName = [r.familyName, r.givenName].filter(Boolean).join('');
+      if (fullName) {
+        try { await userCred.user.updateProfile({displayName: fullName}); } catch (e2) {}
+      }
+    }
+  } catch (e) {
+    if (handleAuthLinkError(e)) return;
+    if (e && (e.code === '1001' || /cancel/i.test(String(e.message || '')))) return; // 사용자 취소
+    alert('Apple 로그인 오류: ' + (e.message || e));
+  }
+}
+
+async function signInWithKakao() {
+  try {
+    var pkce = await generatePKCE();
+    var state = randomOAuthString(16);
+    sessionStorage.setItem('kakao_oauth_verifier', pkce.verifier);
+    sessionStorage.setItem('kakao_oauth_state', state);
+    var isNative = window.Capacitor && Capacitor.isNativePlatform();
+    var redirectUri = isNative ? KAKAO_OAUTH_REDIRECT_URI : KAKAO_WEB_REDIRECT_URI;
+    var params = new URLSearchParams({
+      client_id: KAKAO_REST_API_KEY,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      code_challenge: pkce.challenge,
+      code_challenge_method: 'S256',
+      state: state
+    });
+    var authUrl = 'https://kauth.kakao.com/oauth/authorize?' + params.toString();
+    if (isNative) {
+      await CapacitorBrowser.open({url: authUrl});
+    } else {
+      location.href = authUrl;
+    }
+  } catch (e) {
+    alert('카카오 로그인 오류: ' + (e.message || e));
+  }
 }
 
 function installApp() {

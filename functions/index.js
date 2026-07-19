@@ -1,6 +1,7 @@
 const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
+const {getAuth} = require('firebase-admin/auth');
 const Anthropic = require('@anthropic-ai/sdk');
 const {getCheckoutAmount} = require('./pricing.js');
 
@@ -217,6 +218,81 @@ exports.exchangeGoogleAuthCodeV2 = onRequest({
     }
 
     res.status(200).json({idToken: tokenData.id_token});
+  } catch (e) {
+    res.status(500).json({error: 'internal', message: e && e.message ? e.message : String(e)});
+  }
+});
+
+// 카카오는 Firebase가 기본 제공하는 로그인 프로바이더가 아니라서, 구글처럼
+// id_token을 바로 Firebase에 넣을 수 없다 — 카카오 토큰을 서버에서 검증한 뒤
+// Firebase 전용 커스텀 토큰을 발급해서 클라이언트가 signInWithCustomToken()으로
+// 로그인하게 한다. uid는 카카오 고유 ID 기반으로 고정(kakao:{카카오ID})해서
+// 같은 사람이 다시 로그인하면 항상 같은 Firebase 계정으로 연결됨.
+// TODO: 카카오 디벨로퍼스에서 발급받은 REST API 키로 교체
+const KAKAO_REST_API_KEY = 'REPLACE_WITH_KAKAO_REST_API_KEY';
+exports.exchangeKakaoAuthV2 = onRequest({
+  region: 'asia-northeast3',
+  invoker: 'public',
+  secrets: ['KAKAO_CLIENT_SECRET'],
+}, async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  try {
+    const body = req.body || {};
+    const code = body.code;
+    const codeVerifier = body.codeVerifier;
+    const redirectUri = body.redirectUri;
+    if (!code || !codeVerifier || !redirectUri) {
+      res.status(400).json({error: 'invalid-argument', message: '잘못된 요청입니다.'});
+      return;
+    }
+
+    const tokenParams = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: KAKAO_REST_API_KEY,
+      client_secret: process.env.KAKAO_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      code,
+      code_verifier: codeVerifier,
+    });
+    const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: tokenParams.toString(),
+    });
+    const tokenRawBody = await tokenRes.text();
+    let tokenData;
+    try {
+      tokenData = JSON.parse(tokenRawBody);
+    } catch (e) {
+      res.status(502).json({error: 'internal', message: '카카오 응답을 처리하지 못했습니다.'});
+      return;
+    }
+    if (!tokenRes.ok || !tokenData.access_token) {
+      res.status(400).json({error: 'failed-precondition', message: tokenData.error_description || tokenData.error || '토큰 교환에 실패했습니다.'});
+      return;
+    }
+
+    const profileRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: {'Authorization': `Bearer ${tokenData.access_token}`},
+    });
+    const profile = await profileRes.json();
+    if (!profileRes.ok || !profile.id) {
+      res.status(502).json({error: 'internal', message: '카카오 사용자 정보를 가져오지 못했습니다.'});
+      return;
+    }
+
+    const uid = `kakao:${profile.id}`;
+    const nickname = (profile.kakao_account && profile.kakao_account.profile && profile.kakao_account.profile.nickname)
+      || (profile.properties && profile.properties.nickname) || null;
+    const customToken = await getAuth().createCustomToken(uid);
+    res.status(200).json({customToken, nickname});
   } catch (e) {
     res.status(500).json({error: 'internal', message: e && e.message ? e.message : String(e)});
   }

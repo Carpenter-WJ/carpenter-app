@@ -11,6 +11,7 @@
     "cap:android": "npm run cap:sync && npx cap open android"
   },
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor-firebase/authentication": "^7.5.0",
     "@capacitor/android": "^7.0.0",
     "@capacitor/app": "^7.1.2",

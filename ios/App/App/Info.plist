@@ -55,6 +55,13 @@
 				<string>com.googleusercontent.apps.774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak</string>
 			</array>
 		</dict>
+		<dict>
+			<!-- TODO: 카카오 디벨로퍼스에서 발급받은 네이티브 앱 키로 교체 (kakao{네이티브 앱 키} 형식) -->
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kakaoREPLACE_WITH_NATIVE_APP_KEY</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>
