@@ -4146,6 +4146,8 @@ function renderPremUpgradeOv(reasonText) {
   const isNativeApp = window.Capacitor && Capacitor.isNativePlatform();
   const consentRow = document.getElementById('premConsentRow');
   if (consentRow) consentRow.style.display = isNativeApp ? 'none' : '';
+  const restoreBtn = document.getElementById('premRestoreBtn');
+  if (restoreBtn) restoreBtn.style.display = isNativeApp ? '' : 'none';
 
   const alreadyPersonal = premiumTier === 'personal';
   const alreadyLeader = premiumTier === 'leader';
@@ -4302,17 +4304,37 @@ async function startNativeCheckout(tier) {
     alert('결제 요청 중 오류가 발생했어요: ' + (e.message || e));
   }
 }
+function applyConfirmedTier(tier) {
+  premiumTier = tier;
+  isPremium = true;
+  isPremiumLeader = tier === 'leader';
+  updatePremSettingLabel();
+}
 async function confirmNativePurchase(tier) {
   try {
     const confirmFn = firebase.app().functions('asia-northeast3').httpsCallable('confirmNativePurchase');
     const res = await confirmFn({tier});
-    premiumTier = res.data.tier;
-    isPremium = true;
-    isPremiumLeader = premiumTier === 'leader';
-    updatePremSettingLabel();
+    applyConfirmedTier(res.data.tier);
     alert('결제가 완료됐어요! 프리미엄이 적용됐습니다. 🎉');
   } catch (e) {
     alert('결제 확인 중 문제가 발생했어요. 이미 결제하셨다면 문의해주세요.\n' + (e.message || e));
+  }
+}
+// 앱스토어 심사 규정(3.1.1)상 비소모성 인앱 구입은 재설치·기기변경 시 복원할 수
+// 있는 수단이 필수 — 프리미엄 화면에 "구매 내역 복원" 버튼으로 노출됨(네이티브 전용)
+async function restoreNativePurchases() {
+  try {
+    const {customerInfo} = await Purchases.restorePurchases();
+    const tier = customerInfo.entitlements.active['leader'] ? 'leader'
+      : customerInfo.entitlements.active['personal'] ? 'personal' : null;
+    if (!tier) { alert('복원할 구매 내역이 없어요.'); return; }
+    const confirmFn = firebase.app().functions('asia-northeast3').httpsCallable('confirmNativePurchase');
+    const res = await confirmFn({tier});
+    applyConfirmedTier(res.data.tier);
+    closeOv('premUpgradeOv');
+    alert('구매 내역이 복원됐어요! 프리미엄이 적용됐습니다. 🎉');
+  } catch (e) {
+    alert('구매 내역 복원 중 오류가 발생했어요: ' + (e.message || e));
   }
 }
 async function handlePortOneReturn() {
