@@ -228,8 +228,24 @@ exports.exchangeGoogleAuthCodeV2 = onRequest({
 // Firebase 전용 커스텀 토큰을 발급해서 클라이언트가 signInWithCustomToken()으로
 // 로그인하게 한다. uid는 카카오 고유 ID 기반으로 고정(kakao:{카카오ID})해서
 // 같은 사람이 다시 로그인하면 항상 같은 Firebase 계정으로 연결됨.
-// TODO: 카카오 디벨로퍼스에서 발급받은 REST API 키로 교체
 const KAKAO_REST_API_KEY = 'a3369f716e4b4affaf82d8288c92f86c';
+const KAKAO_NATIVE_APP_KEY = '4c7161f9f8b8349d951c03acd51a48e3';
+
+// 카카오 Redirect URI는 https:// 만 등록 가능(구글과 달리 앱 커스텀 스킴을
+// 직접 등록 못 함) — 그래서 이 HTTPS 주소를 카카오에 등록해두고, 카카오가
+// 여기로 리다이렉트하면 곧바로 앱의 커스텀 스킴(kakao{네이티브앱키}://oauth)
+// 으로 302 리다이렉트시켜서 네이티브 앱의 appUrlOpen 리스너가 받게 중계한다.
+exports.kakaoAuthRelay = onRequest({
+  region: 'asia-northeast3',
+  invoker: 'public',
+}, (req, res) => {
+  const params = new URLSearchParams();
+  if (req.query.code) params.set('code', String(req.query.code));
+  if (req.query.state) params.set('state', String(req.query.state));
+  if (req.query.error) params.set('error', String(req.query.error));
+  res.redirect(302, `kakao${KAKAO_NATIVE_APP_KEY}://oauth?${params.toString()}`);
+});
+
 exports.exchangeKakaoAuthV2 = onRequest({
   region: 'asia-northeast3',
   invoker: 'public',

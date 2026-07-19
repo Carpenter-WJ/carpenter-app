@@ -851,10 +851,13 @@ var GOOGLE_OAUTH_REDIRECT_URI = 'com.googleusercontent.apps.774763481439-s6dk1ir
 // 카카오는 Firebase 기본 제공 프로바이더가 아니라서 서버(exchangeKakaoAuthV2)가
 // 토큰을 커스텀 토큰으로 바꿔줌. 이메일은 카카오 "비즈 앱 심사" 없이는 못 받아서
 // 요청하지 않음 — 카카오로 가입한 사용자는 구글/애플 계정과 자동 병합되지 않음(알려진 제약).
-// TODO: 카카오 디벨로퍼스에서 발급받은 값으로 교체 (REST API 키는 functions/index.js와 동일하게 맞출 것)
+// 카카오는 구글과 달리 Redirect URI로 앱 커스텀 스킴을 직접 등록할 수 없어서(https만
+// 허용), 네이티브 플로우는 kakaoAuthRelay(Cloud Function, https)를 카카오에 등록해두고
+// 그 함수가 곧바로 커스텀 스킴으로 다시 리다이렉트하는 중계 방식을 씀.
 var KAKAO_REST_API_KEY = 'a3369f716e4b4affaf82d8288c92f86c';
 var KAKAO_NATIVE_APP_KEY = '4c7161f9f8b8349d951c03acd51a48e3';
 var KAKAO_OAUTH_REDIRECT_URI = 'kakao' + KAKAO_NATIVE_APP_KEY + '://oauth';
+var KAKAO_RELAY_URL = 'https://asia-northeast3-moksuilji.cloudfunctions.net/kakaoAuthRelay';
 var KAKAO_WEB_REDIRECT_URI = location.origin + location.pathname;
 
 function base64UrlEncode(buffer) {
@@ -981,7 +984,9 @@ async function handleKakaoAuthRedirect(url) {
     alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
     return;
   }
-  await exchangeKakaoCode(code, verifier, KAKAO_OAUTH_REDIRECT_URI);
+  // 토큰 교환 시의 redirect_uri는 인가 요청 때 실제로 카카오에 보냈던 값(중계
+  // 함수의 https 주소)과 정확히 일치해야 함 — 앱 커스텀 스킴이 아님에 주의.
+  await exchangeKakaoCode(code, verifier, KAKAO_RELAY_URL);
 }
 
 // 웹에서는 카카오 인가 페이지로 완전히 페이지가 이동했다가 돌아오므로,
@@ -1092,7 +1097,7 @@ async function signInWithKakao() {
     sessionStorage.setItem('kakao_oauth_verifier', pkce.verifier);
     sessionStorage.setItem('kakao_oauth_state', state);
     var isNative = window.Capacitor && Capacitor.isNativePlatform();
-    var redirectUri = isNative ? KAKAO_OAUTH_REDIRECT_URI : KAKAO_WEB_REDIRECT_URI;
+    var redirectUri = isNative ? KAKAO_RELAY_URL : KAKAO_WEB_REDIRECT_URI;
     var params = new URLSearchParams({
       client_id: KAKAO_REST_API_KEY,
       redirect_uri: redirectUri,
