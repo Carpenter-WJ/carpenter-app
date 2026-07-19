@@ -5,9 +5,13 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { Purchases } from '@revenuecat/purchases-capacitor';
+import { Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 window.Capacitor = Capacitor;
 window.FirebaseAuthentication = FirebaseAuthentication;
 window.CapacitorBrowser = Browser;
 window.CapacitorApp = App;
 window.Purchases = Purchases;
+window.CapacitorFilesystem = Filesystem;
+window.CapacitorShare = Share;

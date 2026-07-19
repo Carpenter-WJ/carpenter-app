@@ -200,6 +200,14 @@ async function removeWorkPhoto(idx) {
   try { await saveWorkPhotos(w); } catch(e) { console.error('사진 삭제 반영 오류:', e); }
   renderWorkPhotoGrid();
 }
+// 네이티브 웹뷰는 window.open(url,'_blank')이 새 탭 개념이 없어 아무 반응이 없다
+function openExternalUrl(url) {
+  if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorBrowser) {
+    CapacitorBrowser.open({url});
+  } else {
+    window.open(url, '_blank');
+  }
+}
 function renderWorkPhotoGrid() {
   const grid = document.getElementById('workPhotoGrid');
   if (!grid) return;
@@ -208,7 +216,7 @@ function renderWorkPhotoGrid() {
   const photos = (w && w.photos) || [];
   grid.innerHTML = photos.map((url, i) => `
     <div class="day-photo-thumb">
-      <img src="${url}" onclick="window.open('${url}','_blank')">
+      <img src="${url}" onclick="openExternalUrl('${url}')">
       <button onclick="removeWorkPhoto(${i})">✕</button>
     </div>`).join('');
 }
@@ -3195,6 +3203,31 @@ function renderIncomeChart() {
   document.getElementById('incomeChart').innerHTML=`<svg viewBox="-4 -18 ${totalW+8} ${chartH+padB}" width="100%" style="overflow:visible;display:block">${bars}</svg>`;
 }
 
+// <a download>+blob URL은 WKWebView(네이티브 앱)엔 다운로드 관리자가 없어서
+// 파일로 안 떨어지고 그냥 화면에 내용이 표시돼버리는 경우가 많다. 네이티브에서는
+// 파일시스템에 임시 저장 후 공유 시트(저장/AirDrop 등)로 우회한다.
+async function nativeSaveAndShare(filename, content) {
+  try {
+    const base64 = btoa(unescape(encodeURIComponent(content)));
+    const result = await CapacitorFilesystem.writeFile({ path: filename, data: base64, directory: 'CACHE' });
+    await CapacitorShare.share({ url: result.uri });
+  } catch (e) {
+    if (e && e.message === 'Share canceled') return;
+    alert('내보내기 중 오류가 발생했어요: ' + (e.message || e));
+  }
+}
+function saveOrShareFile(filename, content) {
+  if (window.Capacitor && Capacitor.isNativePlatform()) {
+    nativeSaveAndShare(filename, content);
+    return;
+  }
+  const blob = new Blob([content], {type: 'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
 function exportCSV() {
   if(dataMode==='team'&&teamRole!=='leader'){alert('팀원 모드에서는 전체 데이터 내보내기가 제한돼요.');return;}
   const short = s => s ? s.slice(5).replace('-', '/') : ''; // 'YYYY-MM-DD' → 'MM/DD'
@@ -3212,11 +3245,24 @@ function exportCSV() {
     rows.push([section, ownerName, w.site, w.workDesc||'', period, dates.length, netWage(w), w.taxWithheld?'3.3%':'', w.unit||1, exp, status, rcv, unpaid]);
   });
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download=`현장일지_${todayStr()}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  saveOrShareFile(`현장일지_${todayStr()}.csv`, '﻿'+csv);
+}
+
+// window.open('', '_blank', ...)으로 팝업을 띄워 내용을 써넣는 방식은 네이티브
+// 웹뷰에 팝업 창 개념이 없어 항상 null을 반환한다(팝업 차단과 동일 증상). 네이티브
+// 에서는 완성된 HTML을 data: URI로 시스템 브라우저(Safari)에 열어서, 사용자가
+// Safari 자체의 공유 메뉴로 인쇄/PDF 저장을 하도록 우회한다.
+function openPrintableDoc(html) {
+  if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorBrowser) {
+    CapacitorBrowser.open({url: 'data:text/html;charset=utf-8,' + encodeURIComponent(html)});
+    return;
+  }
+  const w = window.open('', '_blank', 'width=860,height=720');
+  if (!w) { alert('팝업이 차단되어 있어요. 브라우저에서 팝업 허용 후 다시 시도해 주세요.'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 600);
 }
 
 function printReport() {
@@ -3387,12 +3433,7 @@ ${payments.length > 0 ? `
 </body>
 </html>`;
 
-  const w = window.open('', '_blank', 'width=860,height=720');
-  if (!w) { alert('팝업이 차단되어 있어요. 브라우저에서 팝업 허용 후 다시 시도해 주세요.'); return; }
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 600);
+  openPrintableDoc(html);
 }
 
 function renderStat() {
@@ -3848,22 +3889,13 @@ ${memberSections}
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', 'width=860,height=720');
-  if (!win) { alert('팝업이 차단되어 있어요. 브라우저에서 팝업 허용 후 다시 시도해 주세요.'); return; }
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 600);
+  openPrintableDoc(html);
 }
 
 // ── 백업 ──
 function exportData() {
   if(dataMode==='team'){alert('팀 모드에서는 백업 내보내기를 사용할 수 없어요.\n(팀원에게는 전체 데이터가 보이지 않아 백업 의미가 달라져요)');return;}
-  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download=`현장일지_백업_${todayStr()}.json`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  saveOrShareFile(`현장일지_백업_${todayStr()}.json`, JSON.stringify(DB,null,2));
 }
 function importData(e) {
   if(dataMode==='team'){alert('팀 모드에서는 백업 복원을 사용할 수 없어요.');e.target.value='';return;}
