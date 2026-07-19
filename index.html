@@ -905,12 +905,19 @@ if (window.Capacitor && Capacitor.isNativePlatform() && Capacitor.getPlatform() 
 
 // target="_blank" 링크(이용약관/개인정보처리방침/환불정책 등)는 네이티브 웹뷰에
 // 새 탭 개념이 없어서 클릭해도 그냥 아무 반응이 없다 — 시스템 브라우저로 열어준다.
+// 주의: a.href(resolved)는 네이티브 앱 안에서 capacitor://localhost/... 형태로
+// 해석되는데, 이건 앱 내부 전용 주소라 시스템 브라우저가 절대 못 연다 — 반드시
+// getAttribute('href')로 원본 상대경로를 가져와서 실제 웹 주소로 바꿔줘야 한다.
+var WEB_BASE_URL = 'https://carpenter-wj.github.io/carpenter-app/';
 if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorBrowser) {
   document.addEventListener('click', function(e) {
     var a = e.target.closest && e.target.closest('a[target="_blank"]');
-    if (!a || !a.href) return;
+    if (!a) return;
+    var raw = a.getAttribute('href');
+    if (!raw) return;
     e.preventDefault();
-    CapacitorBrowser.open({url: a.href});
+    var url = /^https?:\/\//.test(raw) ? raw : WEB_BASE_URL + raw;
+    CapacitorBrowser.open({url: url});
   });
 }
 
