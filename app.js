@@ -801,7 +801,7 @@ async function loadData() {
     }
   }
   updateHeader();
-  renderCal();
+  renderCurrentTab(); // 로그인 시점에 사용자가 보고 있던 탭(설정 포함)을 새 계정 데이터로 다시 그림
   updateOccupationSettingLabel();
   if (!userOccupation) { openOccupationOv(); }
   else { setTimeout(showOnboard, 600); }
@@ -4309,6 +4309,7 @@ function renderCurrentTab() {
   else if(curTab==='work') renderWork();
   else if(curTab==='pay') renderPay();
   else if(curTab==='stat') renderStat();
+  else if(curTab==='set') renderSet();
 }
 
 async function refreshFromCloud() {
