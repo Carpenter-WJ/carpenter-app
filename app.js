@@ -869,11 +869,11 @@ async function loadPersonalData(userRef) {
         works: firebase.firestore.FieldValue.delete(),
         payments: firebase.firestore.FieldValue.delete()
       });
-    } else {
-      // 로컬 데이터 마이그레이션 (최초 로그인)
-      const local = localStorage.getItem('moksujilji2');
-      if (local) { DB = JSON.parse(local); await save(); }
     }
+    // works/payments가 둘 다 비어있으면 신규 계정 — localStorage('moksujilji2')는
+    // 기기 공용 캐시라 다른 계정의 데이터일 수 있으므로 여기로 끌어오지 않는다
+    // (이전엔 끌어와서 저장까지 했었는데, 같은 기기에서 계정을 바꾸면 이전 계정의
+    // 현장/작업 기록이 새 계정 Firestore에 그대로 복사되는 데이터 오염 버그였음).
   }
 }
 
@@ -4375,6 +4375,7 @@ auth.onAuthStateChanged(user => {
     stopPendingListener();
     stopNotifListener();
     DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
+    localStorage.removeItem('moksujilji2'); // 기기 공용 캐시라 다음 로그인 계정과 섞이지 않도록 정리
     dataMode = 'personal'; activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     loginScreen.style.display = 'flex';
   }

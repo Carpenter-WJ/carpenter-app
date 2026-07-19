@@ -1,4 +1,5 @@
     * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     :root {
       --pri:#E67E22; --dark:#D35400;
       --bg:#F2F2F7; --card:#fff; --bg-sub:#f7f7f7;
