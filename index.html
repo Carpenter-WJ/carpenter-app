@@ -857,6 +857,17 @@ async function generatePKCE() {
   return {verifier: verifier, challenge: base64UrlEncode(digest)};
 }
 
+// target="_blank" 링크(이용약관/개인정보처리방침/환불정책 등)는 네이티브 웹뷰에
+// 새 탭 개념이 없어서 클릭해도 그냥 아무 반응이 없다 — 시스템 브라우저로 열어준다.
+if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorBrowser) {
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest && e.target.closest('a[target="_blank"]');
+    if (!a || !a.href) return;
+    e.preventDefault();
+    CapacitorBrowser.open({url: a.href});
+  });
+}
+
 if (window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp) {
   CapacitorApp.addListener('appUrlOpen', async function(data) {
     if (!data.url || data.url.indexOf(GOOGLE_OAUTH_REDIRECT_URI) !== 0) return;
