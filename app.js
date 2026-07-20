@@ -487,7 +487,7 @@ async function save() {
         const { workId, ...rest } = p;
         batch.set(t.collection('payments').doc(p.id), { ...rest, wageId: workId, createdBy: p.createdBy });
       });
-      await batch.commit();
+      await withRetry(() => batch.commit());
       // 개인 날일 기록은 users/{uid}/works + payments에 저장
       const personalWorks = DB.works.filter(w => w.isPersonal);
       const personalPays = DB.payments.filter(p => personalWorksIds.has(p.workId));
@@ -496,16 +496,22 @@ async function save() {
         const pBatch = fsdb.batch();
         personalWorks.forEach(w => pBatch.set(ref.collection('works').doc(w.id), w));
         personalPays.forEach(p => pBatch.set(ref.collection('payments').doc(p.id), p));
-        await pBatch.commit();
+        await withRetry(() => pBatch.commit());
       }
     } else {
       const ref = fsdb.collection('users').doc(currentUser.uid);
       const batch = fsdb.batch();
       DB.works.forEach(w => batch.set(ref.collection('works').doc(w.id), w));
       DB.payments.forEach(p => batch.set(ref.collection('payments').doc(p.id), p));
-      await batch.commit();
+      await withRetry(() => batch.commit());
     }
-  } catch(e) { console.error('저장 오류:', e); }
+  } catch(e) {
+    console.error('저장 오류:', e);
+    // 저장 실패를 조용히 삼키면 사용자는 성공한 줄 알고 있다가, 나중에 다시
+    // 들어왔을 때 서버에 반영 안 된 이전 상태로 "되돌아간 것처럼" 보이게 됨 —
+    // 반드시 알려줘서 다시 시도하게 해야 함.
+    alert('네트워크가 불안정해서 저장에 실패했어요. 다시 시도해주세요.');
+  }
 }
 
 // 단일 work를 Firestore에 핀포인트 저장 (팀 wages 또는 개인 works)
@@ -2656,7 +2662,10 @@ async function saveWork() {
   }
   DB.works.sort((a,b)=>(b.dates?.[b.dates.length-1]||'').localeCompare(a.dates?.[a.dates.length-1]||''));
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  if (_savedWork) { try { await saveOneWork(_savedWork); } catch(e) { console.error('저장 오류:', e); } }
+  if (_savedWork) {
+    try { await withRetry(() => saveOneWork(_savedWork)); }
+    catch(e) { console.error('저장 오류:', e); alert('네트워크가 불안정해서 저장에 실패했어요. 다시 시도해주세요.'); }
+  }
   closeAll();
   if(curTab==='cal')renderCal();
   else if(curTab==='work')renderWork();
@@ -2977,16 +2986,21 @@ async function togglePaid() {
   const w=DB.works.find(x=>x.id===selWorkId);
   if(!w)return;
   w.isPaid=!w.isPaid;
-  if(w.isPaid) {
-    const outstanding=Math.max(0,(expAmt(w)||0)-rcvAmt(selWorkId));
-    if(outstanding>0) {
-      const newPay={id:'p_'+Date.now(),workId:selWorkId,date:todayStr(),amount:outstanding,note:'정산 완료 처리',createdBy:currentUser.uid};
-      DB.payments.push(newPay);
-      try { await saveOnePay(newPay); } catch(e) { console.error('정산 기록 저장 오류:', e); }
+  try {
+    if(w.isPaid) {
+      const outstanding=Math.max(0,(expAmt(w)||0)-rcvAmt(selWorkId));
+      if(outstanding>0) {
+        const newPay={id:'p_'+Date.now(),workId:selWorkId,date:todayStr(),amount:outstanding,note:'정산 완료 처리',createdBy:currentUser.uid};
+        DB.payments.push(newPay);
+        await withRetry(() => saveOnePay(newPay));
+      }
     }
+    localStorage.setItem('moksujilji2', JSON.stringify(DB));
+    await withRetry(() => updateOneWage(w));
+  } catch(e) {
+    console.error('정산 처리 저장 오류:', e);
+    alert('네트워크가 불안정해서 저장에 실패했어요. 다시 시도해주세요.');
   }
-  localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  try { await updateOneWage(w); } catch(e) { console.error('저장 오류:', e); }
   document.getElementById('paidToggle').classList.toggle('on',w.isPaid);
   document.getElementById('pdShareBtn').style.display = Math.max(0,(expAmt(w)||0)-rcvAmt(selWorkId))>0&&!w.isPaid?'block':'none';
   renderPay();
@@ -3021,12 +3035,17 @@ async function savePayment() {
   const paidNow = w && !w.isPaid && rcvAmt(selWorkId) >= expAmt(w);
   if (paidNow) w.isPaid = true;
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
+  let saveOk = true;
   try {
-    await saveOnePay(pay);
-    if (paidNow) await updateOneWage(w);
-  } catch(e) { console.error('저장 오류:', e); }
+    await withRetry(() => saveOnePay(pay));
+    if (paidNow) await withRetry(() => updateOneWage(w));
+  } catch(e) {
+    console.error('저장 오류:', e);
+    saveOk = false;
+    alert('네트워크가 불안정해서 저장에 실패했어요. 다시 시도해주세요.');
+  }
   closeOv('addPayOv'); openPayDetail(selWorkId); renderPay();
-  if (paidNow) showToast('정산이 완료됐어요 ✓');
+  if (paidNow && saveOk) showToast('정산이 완료됐어요 ✓');
 }
 
 async function delPay(id) {
