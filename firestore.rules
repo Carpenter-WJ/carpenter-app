@@ -5,12 +5,14 @@ service cloud.firestore {
     // ── 기존 개인(솔로) 데이터 — 변경 없음 ──
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      // premiumTier는 결제 확인 후 Cloud Function(관리자 SDK)만 기록 —
-      // 클라이언트가 직접 이 필드를 써서 무료로 프리미엄을 부여받는 것을 방지.
+      // premiumTier/aiCalls는 결제 확인 및 무료 사용량 집계용 서버 전용 필드 —
+      // 클라이언트가 직접 써서 무료로 프리미엄을 부여받거나 무료 AI 호출 횟수를
+      // 스스로 초기화하는 것을 방지(Cloud Function의 관리자 SDK만 기록).
       allow create: if request.auth != null && request.auth.uid == uid
-        && (!('premiumTier' in request.resource.data) || request.resource.data.premiumTier == null);
+        && (!('premiumTier' in request.resource.data) || request.resource.data.premiumTier == null)
+        && !('aiCalls' in request.resource.data);
       allow update: if request.auth != null && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['premiumTier']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['premiumTier', 'aiCalls']);
       allow delete: if request.auth != null && request.auth.uid == uid;
 
       match /works/{workId} {
@@ -22,6 +24,17 @@ service cloud.firestore {
       match /dailyNotes/{noteId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
+    }
+
+    // 결제 시작 시 클라이언트가 기록하는 "이 paymentId는 내가 시작한 결제"
+    // 표식. confirmPortOnePayment가 이 문서로 결제 소유자를 검증하므로
+    // 본인 uid로만 생성 가능해야 하고, 이후 조회/수정/삭제는 Cloud Function
+    // (관리자 SDK)만 — 클라이언트가 읽거나 고쳐서 검증을 우회하지 못하게 함.
+    match /paymentIntents/{paymentId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.tier in ['personal', 'leader'];
+      allow read, update, delete: if false;
     }
 
     // ── 초대 코드 조회용 최상위 컬렉션 ──

@@ -926,12 +926,16 @@ async function handleGoogleAuthRedirect(url) {
   var qIndex = url.indexOf('?');
   var params = new URLSearchParams(qIndex >= 0 ? url.slice(qIndex + 1) : '');
   var code = params.get('code');
+  var error = params.get('error');
   var state = params.get('state');
   var expectedState = sessionStorage.getItem('oauth_state');
   var verifier = sessionStorage.getItem('oauth_verifier');
   sessionStorage.removeItem('oauth_state');
   sessionStorage.removeItem('oauth_verifier');
-  if (!code) return;
+  if (!code) {
+    if (error) alert('Google 로그인 중 오류가 발생했어요: ' + error);
+    return;
+  }
   if (state !== expectedState) {
     alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
     return;
@@ -981,12 +985,16 @@ async function handleKakaoAuthRedirect(url) {
   var qIndex = url.indexOf('?');
   var params = new URLSearchParams(qIndex >= 0 ? url.slice(qIndex + 1) : '');
   var code = params.get('code');
+  var error = params.get('error');
   var state = params.get('state');
   var expectedState = sessionStorage.getItem('kakao_oauth_state');
   var verifier = sessionStorage.getItem('kakao_oauth_verifier');
   sessionStorage.removeItem('kakao_oauth_state');
   sessionStorage.removeItem('kakao_oauth_verifier');
-  if (!code) return;
+  if (!code) {
+    if (error) alert('카카오 로그인 중 오류가 발생했어요: ' + error);
+    return;
+  }
   if (state !== expectedState) {
     alert('로그인 검증에 실패했어요. 다시 시도해주세요.');
     return;
@@ -1001,7 +1009,11 @@ async function handleKakaoAuthRedirect(url) {
 async function handleKakaoReturn() {
   var params = new URLSearchParams(location.search);
   var code = params.get('code');
-  if (!code) return;
+  var error = params.get('error');
+  if (!code) {
+    if (error) alert('카카오 로그인 중 오류가 발생했어요: ' + error);
+    return;
+  }
   var state = params.get('state');
   var expectedState = sessionStorage.getItem('kakao_oauth_state');
   var verifier = sessionStorage.getItem('kakao_oauth_verifier');

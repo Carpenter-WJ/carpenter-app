@@ -329,13 +329,19 @@ exports.confirmPortOnePayment = onCall({
   }
 
   const db = getFirestore();
-  const purchaseRef = db.collection('purchases').doc(paymentId);
-  const purchaseSnap = await purchaseRef.get();
-  if (purchaseSnap.exists) {
-    return {success: true, tier: purchaseSnap.data().tier, alreadyProcessed: true};
+
+  // 결제 시작 시 클라이언트가 미리 기록해 둔 의도(paymentIntents) 문서로
+  // 이 paymentId가 실제로 이 호출자 본인이 시작한 결제인지 확인.
+  // 이 검증이 없으면 다른 사람의 paymentId(노출/추측 가능)를 대신 제출해
+  // 자기 계정에 프리미엄을 무단으로 부여할 수 있음.
+  const intentRef = db.collection('paymentIntents').doc(paymentId);
+  const intentSnap = await intentRef.get();
+  if (!intentSnap.exists || intentSnap.data().uid !== uid) {
+    throw new HttpsError('permission-denied', '본인이 시작한 결제만 확인할 수 있습니다.');
   }
 
   const userRef = db.collection('users').doc(uid);
+  const purchaseRef = db.collection('purchases').doc(paymentId);
   const userSnap = await userRef.get();
   const currentTier = userSnap.exists ? (userSnap.data().premiumTier || null) : null;
   const expectedAmount = getCheckoutAmount(tier, currentTier);
@@ -354,15 +360,20 @@ exports.confirmPortOnePayment = onCall({
     throw new HttpsError('invalid-argument', '결제 금액이 올바르지 않습니다.');
   }
 
-  await db.runTransaction(async (tx) => {
+  const result = await db.runTransaction(async (tx) => {
+    const purchaseSnap = await tx.get(purchaseRef);
+    if (purchaseSnap.exists) {
+      return {tier: purchaseSnap.data().tier, alreadyProcessed: true};
+    }
     tx.set(purchaseRef, {
       uid, tier, amount: expectedAmount, paymentId,
       confirmedAt: FieldValue.serverTimestamp(),
     });
     tx.set(userRef, {premiumTier: tier}, {merge: true});
+    return {tier, alreadyProcessed: false};
   });
 
-  return {success: true, tier};
+  return {success: true, tier: result.tier, alreadyProcessed: result.alreadyProcessed};
 });
 
 // 네이티브 앱(iOS/안드로이드) 인앱결제(RevenueCat) 확인. 상품 가격은 스토어

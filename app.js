@@ -257,8 +257,8 @@ function onSiteInput() {
     if (_siteHistory.length === 0) { dd.style.display = 'none'; return; }
     dd.innerHTML = _siteHistory.map((s, i) => `
       <div class="sdi" onclick="selectSiteHistory(${i})">
-        <div class="sdi-name">${s.site}</div>
-        ${s.address ? `<div class="sdi-meta">📍 ${s.address}</div>` : ''}
+        <div class="sdi-name">${escapeHtml(s.site)}</div>
+        ${s.address ? `<div class="sdi-meta">📍 ${escapeHtml(s.address)}</div>` : ''}
       </div>`).join('');
     dd.style.display = '';
   }, 120);
@@ -680,7 +680,8 @@ function workerLabel(w) {
 
 // 팀장이 팀원에게 지급해야 하는 기록 여부 (지급 관점 vs 수령 관점 분기 핵심)
 function isPayOut(w) {
-  return dataMode === 'team' && teamRole === 'leader' && !w.isPersonal;
+  return dataMode === 'team' && teamRole === 'leader' && !w.isPersonal
+    && (w.ownerUid || w.createdBy) !== currentUser.uid;
 }
 
 // 현장 상태: 예정(전체 날짜가 미래) > 진행 중
@@ -697,7 +698,7 @@ function workTypeBadge(w) {
   if (w.isPersonal) {
     return `<span style="${base};background:rgba(52,199,89,.15);color:#34C759">개인</span>`;
   }
-  const name = workerLabel(w);
+  const name = escapeHtml(workerLabel(w));
   const badgeColor = w.isGuest ? 'background:rgba(255,149,0,.15);color:#FF9500' : 'background:#e8f0fe;color:#3b5bdb';
   return `<span style="${base};${badgeColor}">팀</span><span style="font-size:10px;font-weight:600;color:var(--muted);margin-left:4px;vertical-align:middle">${name}</span>`;
 }
@@ -749,11 +750,13 @@ async function loadData() {
         // 팀장에 의해 강제 퇴출됨 → memberExits 패키지 확인 후 개인 이관
         try {
           // 신규 형식(uid 필드 쿼리) + 구 형식(doc id = uid) 둘 다 처리
+          const claimedExits = userData.claimedExits || [];
           const [newExits, oldExit] = await Promise.all([
             teamRef().collection('memberExits').where('uid', '==', currentUser.uid).get(),
             teamRef().collection('memberExits').doc(currentUser.uid).get()
           ]);
-          const exitDocs = [...newExits.docs, ...(oldExit.exists && !oldExit.data().uid ? [oldExit] : [])];
+          const exitDocs = [...newExits.docs, ...(oldExit.exists && !oldExit.data().uid ? [oldExit] : [])]
+            .filter(d => !claimedExits.includes(d.id));
           if (exitDocs.length > 0) {
             const allWorks = exitDocs.flatMap(d => d.data().works || []);
             const allPays = exitDocs.flatMap(d => d.data().payments || []);
@@ -763,9 +766,12 @@ async function loadData() {
               allPays.forEach(p => batch.set(userRef.collection('payments').doc(p.id), p));
               await batch.commit();
             }
-            const delBatch = fsdb.batch();
-            exitDocs.forEach(d => delBatch.delete(d.ref));
-            await delBatch.commit();
+            // memberExits 문서는 삭제하지 않음 — 팀장의 "팀원별 통계"가 이전 팀원
+            // 이력 조회에 이 문서를 계속 사용하므로(renderMemberStats), 개인 이관을
+            // 마쳤다는 표시만 본인 계정에 남겨서 재이관만 막는다.
+            await userRef.update({
+              claimedExits: firebase.firestore.FieldValue.arrayUnion(...exitDocs.map(d => d.id))
+            });
           }
         } catch(e) { console.warn('퇴출 이관 처리 오류:', e.message); }
         await userRef.update({ teamId: firebase.firestore.FieldValue.delete() });
@@ -1394,7 +1400,7 @@ function renderMemberList() {
         ? `<img class="set-avatar" style="width:36px;height:36px" src="${m.photoURL}" onerror="this.style.display='none'">`
         : `<div class="set-avatar" style="width:36px;height:36px;background:var(--pri);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff">👤</div>`}
       <div class="set-text">
-        <div class="set-item-lbl">${m.displayName || '이름 없음'}${m.role === 'leader' ? ' (팀장)' : ''}</div>
+        <div class="set-item-lbl">${escapeHtml(m.displayName || '이름 없음')}${m.role === 'leader' ? ' (팀장)' : ''}</div>
       </div>
       ${(teamRole === 'leader' && m.role !== 'leader')
         ? `<button class="btn-out" style="width:auto;padding:6px 12px;font-size:13px;color:#FF3B30;border-color:#FF3B30" onclick="removeMember('${m.uid}')">내보내기</button>`
@@ -1483,7 +1489,7 @@ function renderTeamSettings() {
     <div class="set-item" style="cursor:pointer" onclick="openTeamMembersOv()">
       <div class="set-icon" style="background:rgba(0,122,255,.12)">👥</div>
       <div class="set-text">
-        <div class="set-item-lbl">${teamInfo.name}</div>
+        <div class="set-item-lbl">${escapeHtml(teamInfo.name)}</div>
         <div class="set-item-sub">${teamRole === 'leader' ? '팀장' : '팀원'} · 멤버 ${teamInfo.memberCount}/${isPremiumLeader ? '무제한' : teamInfo.maxMembers}명</div>
       </div>
       <span style="color:var(--muted);font-size:18px">›</span>
@@ -1842,9 +1848,9 @@ function renderCal() {
         const isPlanned=bar.status==='planned';
         const planStyle=isPlanned?`;opacity:0.6;border-left-style:dashed;background:transparent;border:1.5px dashed ${c.border};color:${c.border}`:'';
         const isOthers=dataMode==='team'&&teamRole==='leader'&&!bar.isPersonal&&bar.ownerUid&&bar.ownerUid!==currentUser.uid;
-        const ownerLabel=isOthers?` · ${memberName(bar.ownerUid)}`:'';
+        const ownerLabel=isOthers?` · ${escapeHtml(memberName(bar.ownerUid))}`:'';
         const othersStyle=isOthers?';opacity:0.75;border-left-style:dashed':'';
-        html+=`<div class="cbar" style="grid-column:${bar.colStart+1}/span ${bar.colSpan};grid-row:${bar.row+1};background:${c.bg};border-left-color:${c.border};color:${c.border}${planStyle}${othersStyle}" onclick="openDayOv('${bar.clickDs}')">${bar.site}${ownerLabel}${isPlanned?' 예정':''}</div>`;
+        html+=`<div class="cbar" style="grid-column:${bar.colStart+1}/span ${bar.colSpan};grid-row:${bar.row+1};background:${c.bg};border-left-color:${c.border};color:${c.border}${planStyle}${othersStyle}" onclick="openDayOv('${bar.clickDs}')">${escapeHtml(bar.site)}${ownerLabel}${isPlanned?' 예정':''}</div>`;
       });
       html+='</div>';
     }
@@ -1879,7 +1885,7 @@ function openDayOv(ds) {
   } else {
     document.getElementById('dayOvWorks').innerHTML=works.map(w=>`
       <div class="dm-work">
-        <div class="dm-site">${w.site}${dataMode==='team'&&!w.isPersonal?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${workerLabel(w)}</span>`:''}</div>
+        <div class="dm-site">${escapeHtml(w.site)}${dataMode==='team'&&!w.isPersonal?` <span style="font-size:11px;color:var(--muted);font-weight:500">· ${escapeHtml(workerLabel(w))}</span>`:''}</div>
         <div class="dm-wage">${w.wage!=null?fmtW(netWage(w))+(w.taxWithheld?'<span class="tax-tag">3.3%</span>':''):'비공개'}</div>
         <button class="dm-edit" onclick="openWorkOv('${w.id}',null)">✏️</button>
       </div>
@@ -2064,7 +2070,7 @@ function renderMemberWageList() {
     <div class="mw-row">
       <label class="mw-check-label">
         <input type="checkbox" class="mw-check" value="${m.uid}" checked>
-        <span class="mw-name">${m.uid===currentUser.uid?'나 (팀장)':(m.customName||m.displayName||'팀원')}</span>
+        <span class="mw-name">${m.uid===currentUser.uid?'나 (팀장)':escapeHtml(m.customName||m.displayName||'팀원')}</span>
       </label>
       <input type="number" class="mw-wage" placeholder="일당" value="${defaultWage||''}" inputmode="numeric">
       <span style="font-size:11px;color:var(--muted)">원</span>
@@ -2162,7 +2168,7 @@ function setVisibility(vis, sharedWith) {
     document.getElementById('sharedWithList').innerHTML=others.map(m=>`
       <label class="member-check">
         <input type="checkbox" value="${m.uid}" ${(sharedWith||[]).includes(m.uid)?'checked':''}>
-        <span>${m.displayName||'팀원'}</span>
+        <span>${escapeHtml(m.displayName||'팀원')}</span>
       </label>`).join('');
   } else { fg.style.display='none'; }
 }
@@ -2227,7 +2233,7 @@ function renderNotifPanel() {
       <div class="notif-item${unread?' unread':''}">
         <div class="notif-item-icon">${icon}</div>
         <div class="notif-item-body">
-          <div class="notif-item-msg">${n.message||''}</div>
+          <div class="notif-item-msg">${escapeHtml(n.message||'')}</div>
           <div class="notif-item-time">${relTime(n.createdAt)}</div>
           ${actionHtml}
         </div>
@@ -2321,17 +2327,22 @@ async function bulkSetPaid() {
     w.isPaid = true;
     const outstanding = Math.max(0, (expAmt(w)||0) - rcvAmt(w.id));
     if (outstanding > 0) {
-      const newPay = {id:'p_'+Date.now()+'_'+w.id, workId:w.id, date:todayStr(), amount:outstanding, note:'정산 완료 처리', createdBy:currentUser.uid};
+      const newPay = {id:'p_'+Date.now()+'_'+w.id, workId:w.id, date:todayStr(), amount:outstanding, note:'정산 완료 처리', createdBy:w.ownerUid||w.createdBy};
       DB.payments.push(newPay);
       newPays.push(newPay);
     }
   });
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  await Promise.all([
-    ...targets.map(w => updateOneWage(w)),
-    ...newPays.map(p => saveOnePay(p))
-  ]);
-  showToast(`${checked.length}개 현장 지급 완료 처리됐어요`);
+  try {
+    await withRetry(() => Promise.all([
+      ...targets.map(w => updateOneWage(w)),
+      ...newPays.map(p => saveOnePay(p))
+    ]));
+    showToast(`${checked.length}개 현장 지급 완료 처리됐어요`);
+  } catch(e) {
+    console.error('일괄 지급 완료 처리 저장 오류:', e);
+    alert('네트워크가 불안정해서 저장에 실패했어요. 다시 시도해주세요.');
+  }
   renderPay();
 }
 
@@ -2808,7 +2819,7 @@ function renderWork() {
     return `
       <div class="wgroup" style="border-left:4px solid ${c.border}">
         <div class="wgroup-head">
-          <div class="wi-site">${head.site}</div>
+          <div class="wi-site">${escapeHtml(head.site)}</div>
           <div class="wgroup-count">${g.items.length}명 작업</div>
         </div>
         <div class="wgroup-body">${g.items.map(w=>renderWorkRow(w,workY,workM,false)).join('')}</div>
@@ -2835,14 +2846,14 @@ function renderWorkRow(w,y,m,standalone) {
   const c=getColor(w.color||'orange');
   const delBtn=canDeleteJob(w)?`<button class="wi-del" onclick="event.stopPropagation();delWork('${w.id}')">🗑</button>`:'';
   const titleHtml=standalone
-    ?`<div class="wi-site">${w.site}${workTypeBadge(w)}</div>`
+    ?`<div class="wi-site">${escapeHtml(w.site)}${workTypeBadge(w)}</div>`
     :(dataMode==='team'?`<div class="wi-who">${workTypeBadge(w)}</div>`:'');
   return `
     <div class="witem" onclick="openWorkOv('${w.id}',null)"${standalone?` style="border-left:4px solid ${c.border}"`:''}>
       <div class="wi-main">
         ${titleHtml}
         <div class="wi-dates">${formatDatesShort(mDates)}</div>
-        ${w.workDesc?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${w.workDesc}</div>`:''}
+        ${w.workDesc?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${escapeHtml(w.workDesc)}</div>`:''}
         <div class="wi-wage">${wageVisible?`일당 ${fmtW(netWage(w))}${u!==1?` · ${u}품`:''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}`:'일당 비공개'}</div>
         ${statusBadge}${badge}
       </div>
@@ -2921,7 +2932,7 @@ function renderPay() {
     const contentHtml=`
       <div class="pi-top">
         <div style="min-width:0;flex:1">
-          <div class="pi-site">${w.site}${workTypeBadge(w)}</div>
+          <div class="pi-site">${escapeHtml(w.site)}${workTypeBadge(w)}</div>
           <div class="pi-meta">${formatDatesShort(w.dates)}</div>
         </div>
         <div class="pi-right">
@@ -2962,10 +2973,10 @@ function openPayDetail(wId) {
   document.getElementById('pdShareBtn').style.display=outstanding>0&&!w.isPaid?'block':'none';
   document.getElementById('pdSite').textContent=w.site;
   const infoLines=[
-    w.workDesc&&`<div style="font-size:12px;color:var(--text2);margin-top:4px;font-weight:600">🛠️ ${w.workDesc}</div>`,
-    w.address&&`<div style="font-size:12px;color:var(--muted);margin-top:4px">📍 ${w.address}</div>`,
-    (w.contact||w.phone)&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">👤 ${[w.contact,w.phone].filter(Boolean).join(' · ')}</div>`,
-    w.memo&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">📝 ${w.memo}</div>`,
+    w.workDesc&&`<div style="font-size:12px;color:var(--text2);margin-top:4px;font-weight:600">🛠️ ${escapeHtml(w.workDesc)}</div>`,
+    w.address&&`<div style="font-size:12px;color:var(--muted);margin-top:4px">📍 ${escapeHtml(w.address)}</div>`,
+    (w.contact||w.phone)&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">👤 ${escapeHtml([w.contact,w.phone].filter(Boolean).join(' · '))}</div>`,
+    w.memo&&`<div style="font-size:12px;color:var(--muted);margin-top:2px">📝 ${escapeHtml(w.memo)}</div>`,
   ].filter(Boolean).join('');
   const payOut = isPayOut(w);
   document.getElementById('pdInfo').innerHTML=`
@@ -3004,7 +3015,7 @@ async function togglePaid() {
     if(w.isPaid) {
       const outstanding=Math.max(0,(expAmt(w)||0)-rcvAmt(selWorkId));
       if(outstanding>0) {
-        const newPay={id:'p_'+Date.now(),workId:selWorkId,date:todayStr(),amount:outstanding,note:'정산 완료 처리',createdBy:currentUser.uid};
+        const newPay={id:'p_'+Date.now(),workId:selWorkId,date:todayStr(),amount:outstanding,note:'정산 완료 처리',createdBy:w.ownerUid||w.createdBy};
         DB.payments.push(newPay);
         await withRetry(() => saveOnePay(newPay));
       }
@@ -3131,7 +3142,7 @@ function renderMemberStats() {
     const member = teamMembers.find(m => m.uid === uid);
     const isActive = !!member;
     const exitEntry = teamMemberExits.find(e => e.uid === uid);
-    const name = member?.customName || member?.displayName || exitEntry?.displayName || memberName(uid);
+    const name = escapeHtml(member?.customName || member?.displayName || exitEntry?.displayName || memberName(uid));
 
     // 이 uid의 퇴장 기록 → 타임스탬프 오름차순
     const exitTimes = teamMemberExits
@@ -3171,7 +3182,7 @@ function renderMemberStats() {
       }).map(w => {
         const cnt = (w.dates||[]).length;
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
-          <span style="color:var(--text2)">${w.site} · ${cnt}일</span>
+          <span style="color:var(--text2)">${escapeHtml(w.site)} · ${cnt}일</span>
           <span style="font-weight:600">${fmtW(expAmt(w))}</span>
         </div>`;
       }).join('');
@@ -3307,7 +3318,7 @@ function printReport() {
   const statBase = (dataMode === 'team' && teamRole !== 'leader')
     ? DB.works.filter(w => w.wage != null)
     : DB.works;
-  const works = statBase.filter(w => (w.dates||[]).some(d => {
+  const works = statBase.filter(w => getWorkStatus(w)!=='planned' && (w.dates||[]).some(d => {
     const p = parsD(d); return p.y === statY && p.m === statM;
   }));
 
@@ -3336,7 +3347,7 @@ function printReport() {
     const statusLabel = w.isPaid ? '정산완료' : outstanding > 0 ? `미수 ${fmtW(outstanding)}` : '정산대기';
     const statusClass = w.isPaid ? 's-paid' : outstanding > 0 ? 's-unpaid' : 's-pending';
     return `<tr>
-      <td class="td-site">${w.site}</td>
+      <td class="td-site">${escapeHtml(w.site)}</td>
       <td class="td-sub">${formatDatesShort(mDates)}</td>
       <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
       <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
@@ -3352,13 +3363,13 @@ function printReport() {
     const w = DB.works.find(x => x.id === p.workId);
     return `<tr>
       <td class="td-sub">${p.date.slice(5).replace('-','/')}</td>
-      <td class="td-site">${w ? w.site : '—'}</td>
+      <td class="td-site">${w ? escapeHtml(w.site) : '—'}</td>
       <td class="td-num td-bold">${fmtW(p.amount)}</td>
       <td class="td-sub">${p.note || ''}</td>
     </tr>`;
   }).join('');
 
-  const teamLabel = (dataMode === 'team' && teamInfo) ? `${teamInfo.name} · ` : '';
+  const teamLabel = (dataMode === 'team' && teamInfo) ? `${escapeHtml(teamInfo.name)} · ` : '';
   const roleSuffix = (dataMode === 'team' && teamRole !== 'leader') ? ' (내 기록 기준)' : '';
 
   const html = `<!DOCTYPE html>
@@ -3660,7 +3671,7 @@ function renderStat() {
     return `
       <div class="witem">
         <div class="wi-main">
-          <div class="wi-site">${w.site}${workTypeBadge(w)}</div>
+          <div class="wi-site">${escapeHtml(w.site)}${workTypeBadge(w)}</div>
           <div class="wi-dates">${formatDatesShort(mDates)}</div>
           <div class="wi-wage">일당 ${fmtW(netWage(w))}${u!==1?` · ${u}품`:''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</div>
         </div>
@@ -3695,6 +3706,7 @@ function _wageStmtWorks(uid, guestName) {
   }).filter(w => (w.dates || []).some(d => { const p = parsD(d); return p.y === wageStmtY && p.m === wageStmtM; }));
 }
 function _buildWageCard(name, roleLabel, isLeaderRole, works) {
+  name = escapeHtml(name);
   const isGuest = roleLabel === '외부';
   let monthTotal = 0;
   const rows = works.map(w => {
@@ -3710,7 +3722,7 @@ function _buildWageCard(name, roleLabel, isLeaderRole, works) {
         : `<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--bg);color:var(--muted);font-weight:700">대기</span>`;
     return `<div style="display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${w.site}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${escapeHtml(w.site)}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(netWage(w))}${u !== 1 ? ' · ' + u + '품' : ''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0;margin-left:12px">
@@ -3751,6 +3763,22 @@ function renderWageStatement() {
     grandTotal += mTotal;
     const name = (m.customName || m.displayName || '이름 없음') + (m.uid === currentUser.uid ? ' (나)' : '');
     html += _buildWageCard(name, m.role === 'leader' ? '팀장' : '팀원', m.role === 'leader', works);
+  });
+  // 이전 팀원(강제퇴출 이력) — 현재 팀원으로 재가입했다면 위에서 이미 표시되므로 제외.
+  // 팀 wages 원본은 퇴출 시 삭제되지 않고 남아있으므로, 그 달에 작업이 있으면 카드로 표시.
+  const exitedUids = [...new Set(teamMemberExits.map(e => e.uid))]
+    .filter(uid => !teamMembers.some(m => m.uid === uid));
+  exitedUids.forEach(uid => {
+    const works = _wageStmtWorks(uid, null);
+    if (works.length === 0) return;
+    const mTotal = works.reduce((s, w) => {
+      const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
+      return s + cnt * netWage(w) * Number(w.unit||1);
+    }, 0);
+    grandTotal += mTotal;
+    const exitEntry = teamMemberExits.find(e => e.uid === uid);
+    const name = (exitEntry?.displayName || '이름 없음') + ' (이전 팀원)';
+    html += _buildWageCard(name, '팀원', false, works);
   });
   // 직접 입력 인력
   const allGuestWorks = DB.works.filter(w => w.isGuest && !w.isPersonal && (w.dates||[]).some(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }));
@@ -3795,7 +3823,7 @@ function printWageStatement() {
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
       const statusCls = w.isPaid ? 'paid' : fullUnpaid > 0 ? 'unpaid' : 'pending';
       return `<tr>
-        <td class="td-site">${w.site}</td>
+        <td class="td-site">${escapeHtml(w.site)}</td>
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
@@ -3805,6 +3833,36 @@ function printWageStatement() {
     }).join('');
     grandTotal += mTotal;
     allSections.push({ name, roleLabel, rows, mTotal, worksCount: works.length });
+  });
+
+  // 이전 팀원(강제퇴출 이력) — 현재 팀원으로 재가입했다면 위에서 이미 표시되므로 제외.
+  const exitedUids = [...new Set(teamMemberExits.map(e => e.uid))]
+    .filter(uid => !teamMembers.some(m => m.uid === uid));
+  exitedUids.forEach(uid => {
+    const works = _wageStmtWorks(uid, null);
+    if (works.length === 0) return;
+    const exitEntry = teamMemberExits.find(e => e.uid === uid);
+    const name = (exitEntry?.displayName || '이름 없음') + ' (이전 팀원)';
+    let mTotal = 0;
+    const rows = works.map(w => {
+      const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
+      const u = Number(w.unit||1);
+      const mAmt = mDates.length * netWage(w) * u;
+      mTotal += mAmt;
+      const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
+      const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
+      const statusCls = w.isPaid ? 'paid' : fullUnpaid > 0 ? 'unpaid' : 'pending';
+      return `<tr>
+        <td class="td-site">${escapeHtml(w.site)}</td>
+        <td class="td-sub">${formatDatesShort(mDates)}</td>
+        <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
+        <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+        <td class="td-num td-bold">${fmtW(mAmt)}</td>
+        <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
+      </tr>`;
+    }).join('');
+    grandTotal += mTotal;
+    allSections.push({ name, roleLabel: '팀원', rows, mTotal, worksCount: works.length });
   });
 
   // 직접 입력
@@ -3822,7 +3880,7 @@ function printWageStatement() {
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
       const statusCls = w.isPaid ? 'paid' : fullUnpaid > 0 ? 'unpaid' : 'pending';
       return `<tr>
-        <td class="td-site">${w.site}</td>
+        <td class="td-site">${escapeHtml(w.site)}</td>
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
@@ -3837,7 +3895,7 @@ function printWageStatement() {
   memberSections = allSections.map(s => `
     <div class="member-block">
       <div class="member-header">
-        <div class="member-name">${s.name}</div>
+        <div class="member-name">${escapeHtml(s.name)}</div>
         <span class="member-role">${s.roleLabel}</span>
       </div>
       ${s.worksCount === 0
@@ -3906,7 +3964,7 @@ function printWageStatement() {
   <div>
     <div class="doc-brand">현장일지</div>
     <div class="doc-title">${monthLabel} 인건비 명세서</div>
-    <div class="doc-sub">${teamName} · ${monthLabel}</div>
+    <div class="doc-sub">${escapeHtml(teamName)} · ${monthLabel}</div>
   </div>
   <div class="doc-meta">
     <strong>${userDisplayName || ''}</strong>
@@ -3990,7 +4048,7 @@ function renderTaxEstFields() {
   const y = Number(document.getElementById('taxEstYear').value || TODAY.getFullYear());
   const fields = document.getElementById('taxEstFields');
   if (isLeaderMode) {
-    const laborCost = DB.works.filter(w=>!w.isPersonal && w.wage!=null).reduce((s,w)=>{
+    const laborCost = DB.works.filter(w=>!w.isPersonal && w.wage!=null && getWorkStatus(w)!=='planned').reduce((s,w)=>{
       const cnt=(w.dates||[]).filter(d=>parsD(d).y===y).length;
       return s + cnt*Number(w.wage)*Number(w.unit||1);
     },0);
@@ -4015,7 +4073,7 @@ function renderTaxEstFields() {
     fields.dataset.laborCost = laborCost;
   } else {
     let gross=0, withheld=0;
-    DB.works.filter(w=>w.wage!=null).forEach(w=>{
+    DB.works.filter(w=>w.wage!=null && getWorkStatus(w)!=='planned').forEach(w=>{
       const cnt=(w.dates||[]).filter(d=>parsD(d).y===y).length;
       if(!cnt) return;
       const u=Number(w.unit||1);
@@ -4281,8 +4339,11 @@ async function startCheckout(tier) {
   }
   const amount = getCheckoutAmount(tier, premiumTier);
   if (amount <= 0) { alert('이미 이용 중인 등급이에요.'); return; }
-  const paymentId = `premium_${currentUser.uid}_${Date.now()}`;
+  const paymentId = `premium_${crypto.randomUUID()}`;
   try {
+    await fsdb.collection('paymentIntents').doc(paymentId).set({
+      uid: currentUser.uid, tier, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
     const response = await PortOne.requestPayment({
       storeId: PORTONE_STORE_ID,
       channelKey: PORTONE_CHANNEL_KEY,
