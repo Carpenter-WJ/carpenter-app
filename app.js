@@ -97,11 +97,13 @@ async function saveDailyNote() {
   renderCal();
   try {
     const ref = fsdb.collection('users').doc(currentUser.uid).collection('dailyNotes').doc(selDate);
-    if (text) { await ref.set({ text, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
-    else { await ref.delete(); }
+    await withRetry(() => text ? ref.set({ text, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }) : ref.delete());
     const el = document.getElementById('dayMemoSaved');
     if (el) { el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 1500); }
-  } catch(e) { console.error('일일 메모 저장 오류:', e); }
+  } catch(e) {
+    console.error('일일 메모 저장 오류:', e);
+    alert('네트워크가 불안정해서 저장에 실패했어요. 다시 시도해주세요.');
+  }
 }
 
 // ── 작업 사진 첨부 ──
@@ -184,9 +186,14 @@ async function handleWorkPhotoSelect(event) {
     }
   }
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
-  try { await saveWorkPhotos(w); } catch(e) { console.error('사진 정보 저장 오류:', e); }
+  try {
+    await withRetry(() => saveWorkPhotos(w));
+    showToast('사진이 저장됐어요');
+  } catch(e) {
+    console.error('사진 정보 저장 오류:', e);
+    alert('네트워크가 불안정해서 사진 정보 저장에 실패했어요. 다시 시도해주세요.');
+  }
   renderWorkPhotoGrid();
-  showToast('사진이 저장됐어요');
 }
 async function removeWorkPhoto(idx) {
   const workId = document.getElementById('editWorkId').value;
@@ -197,7 +204,11 @@ async function removeWorkPhoto(idx) {
   w.photos.splice(idx, 1);
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
   try { await storage.refFromURL(url).delete(); } catch(e) { console.warn('스토리지 파일 삭제 실패:', e.message); }
-  try { await saveWorkPhotos(w); } catch(e) { console.error('사진 삭제 반영 오류:', e); }
+  try { await withRetry(() => saveWorkPhotos(w)); }
+  catch(e) {
+    console.error('사진 삭제 반영 오류:', e);
+    alert('네트워크가 불안정해서 삭제가 반영되지 않았어요. 다시 시도해주세요.');
+  }
   renderWorkPhotoGrid();
 }
 // 네이티브 웹뷰는 window.open(url,'_blank')이 새 탭 개념이 없어 아무 반응이 없다
@@ -1672,8 +1683,8 @@ async function selectOccupation(id) {
   document.getElementById('occupationOv').style.display = 'none';
   updateOccupationSettingLabel();
   if (currentUser) {
-    try { await fsdb.collection('users').doc(currentUser.uid).set({occupation: id}, {merge: true}); }
-    catch(e) { console.error('직종 저장 오류:', e); }
+    try { await withRetry(() => fsdb.collection('users').doc(currentUser.uid).set({occupation: id}, {merge: true})); }
+    catch(e) { console.error('직종 저장 오류:', e); alert('네트워크가 불안정해서 저장에 실패했어요. 설정 탭에서 다시 시도해주세요.'); }
   }
   setTimeout(showOnboard, 600);
 }
@@ -1693,8 +1704,11 @@ function updatePremSettingLabel() {
 async function saveBankAccount(v) {
   userBankAccount = v.trim();
   if (!currentUser) return;
-  try { await fsdb.collection('users').doc(currentUser.uid).set({bankAccount: userBankAccount}, {merge: true}); }
-  catch(e) { console.error('계좌번호 저장 오류:', e); }
+  try { await withRetry(() => fsdb.collection('users').doc(currentUser.uid).set({bankAccount: userBankAccount}, {merge: true})); }
+  catch(e) {
+    console.error('계좌번호 저장 오류:', e);
+    alert('네트워크가 불안정해서 계좌번호 저장에 실패했어요. 다시 시도해주세요.');
+  }
 }
 
 // ── 탭 ──
