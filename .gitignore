@@ -15,6 +15,12 @@ www/
 android/app/src/main/assets/public/
 ios/App/App/public/
 
+# 릴리즈 서명 키스토어 — 절대 커밋 금지(분실 시 앱 업데이트 영구 불가)
+android/keystore/
+android/*.keystore
+android/*.jks
+android/key.properties
+
 # Android 빌드 산출물
 android/.gradle/
 android/build/
