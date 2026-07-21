@@ -30,6 +30,14 @@
                 <data android:scheme="kakao4c7161f9f8b8349d951c03acd51a48e3" />
             </intent-filter>
 
+            <!-- 구글 로그인 리다이렉트용 커스텀 URL 스킴 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.googleusercontent.apps.774763481439-s6dk1irvkp4af0j6lgqoa6pse81dnuak" />
+            </intent-filter>
+
         </activity>
 
         <provider
