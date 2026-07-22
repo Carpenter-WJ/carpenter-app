@@ -4187,7 +4187,7 @@ const PORTONE_CHANNEL_KEY = 'channel-key-REPLACE_WITH_REAL_KEY';
 // 샀는지와 무관하게 "지금 leader entitlement를 실제로 갖고 있는가"만 확인함.
 const REVENUECAT_IOS_API_KEY = 'appl_MAQrtheIUeoXHGhlNhTJlQJuhPM';
 // TODO: 안드로이드 앱 부트스트랩 및 RevenueCat 연결 후 실제 공개 SDK 키로 교체
-const REVENUECAT_ANDROID_API_KEY = 'goog_REPLACE_WITH_REAL_KEY';
+const REVENUECAT_ANDROID_API_KEY = 'goog_fdJSCwFxpRpVMzQWJVPwZSGiAbi';
 const IAP_PRODUCT_IDS = {
   personal: 'premium_personal',
   leader: 'premium_leader',
