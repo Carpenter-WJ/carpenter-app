@@ -2327,7 +2327,7 @@ async function bulkSetPaid() {
     w.isPaid = true;
     const outstanding = Math.max(0, (expAmt(w)||0) - rcvAmt(w.id));
     if (outstanding > 0) {
-      const newPay = {id:'p_'+Date.now()+'_'+w.id, workId:w.id, date:todayStr(), amount:outstanding, note:'정산 완료 처리', createdBy:w.ownerUid||w.createdBy};
+      const newPay = {id:'p_'+Date.now()+'_'+w.id, workId:w.id, date:todayStr(), amount:outstanding, note:'정산 완료 처리', createdBy:w.ownerUid||w.createdBy||currentUser.uid};
       DB.payments.push(newPay);
       newPays.push(newPay);
     }
@@ -3015,7 +3015,7 @@ async function togglePaid() {
     if(w.isPaid) {
       const outstanding=Math.max(0,(expAmt(w)||0)-rcvAmt(selWorkId));
       if(outstanding>0) {
-        const newPay={id:'p_'+Date.now(),workId:selWorkId,date:todayStr(),amount:outstanding,note:'정산 완료 처리',createdBy:w.ownerUid||w.createdBy};
+        const newPay={id:'p_'+Date.now(),workId:selWorkId,date:todayStr(),amount:outstanding,note:'정산 완료 처리',createdBy:w.ownerUid||w.createdBy||currentUser.uid};
         DB.payments.push(newPay);
         await withRetry(() => saveOnePay(newPay));
       }
