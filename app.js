@@ -3055,7 +3055,7 @@ async function savePayment() {
   if(!date||!amount){alert('날짜와 금액을 입력해 주세요.');return;}
   const w=DB.works.find(x=>x.id===selWorkId);
   const pay={id:Date.now().toString(36),workId:selWorkId,date,amount,note};
-  if(dataMode==='team') pay.createdBy=w?(w.ownerUid||w.createdBy):currentUser.uid;
+  if(dataMode==='team') pay.createdBy=(w&&(w.ownerUid||w.createdBy))||currentUser.uid;
   DB.payments.push(pay);
   const paidNow = w && !w.isPaid && rcvAmt(selWorkId) >= expAmt(w);
   if (paidNow) w.isPaid = true;
