@@ -860,7 +860,10 @@ var KAKAO_REST_API_KEY = 'a3369f716e4b4affaf82d8288c92f86c';
 var KAKAO_NATIVE_APP_KEY = '4c7161f9f8b8349d951c03acd51a48e3';
 var KAKAO_OAUTH_REDIRECT_URI = 'kakao' + KAKAO_NATIVE_APP_KEY + '://oauth';
 var KAKAO_RELAY_URL = 'https://asia-northeast3-moksuilji.cloudfunctions.net/kakaoAuthRelay';
-var KAKAO_WEB_REDIRECT_URI = location.origin + location.pathname;
+// location.origin + location.pathname로 동적 계산하면 사용자가 index.html을
+// 명시한 URL로 접속(북마크/홈화면 추가 등)했을 때 카카오에 등록된 값과 정확히
+// 안 맞아서 KOE006(리다이렉트 URI 불일치) 에러가 남 — 항상 고정된 값으로 통일.
+var KAKAO_WEB_REDIRECT_URI = 'https://carpenter-wj.github.io/carpenter-app/';
 
 function base64UrlEncode(buffer) {
   var bytes = new Uint8Array(buffer);
