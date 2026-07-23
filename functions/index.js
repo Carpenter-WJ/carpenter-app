@@ -2,6 +2,7 @@ const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const {getAuth} = require('firebase-admin/auth');
+const {getStorage} = require('firebase-admin/storage');
 const Anthropic = require('@anthropic-ai/sdk');
 const {getCheckoutAmount} = require('./pricing.js');
 
@@ -431,4 +432,63 @@ exports.confirmNativePurchase = onCall({
   });
 
   return {success: true, tier: result.tier};
+});
+
+// 계정 삭제(회원 탈퇴) — 애플 심사 가이드라인 5.1.1(v) 대응.
+// 관리자 SDK로 처리해서 클라이언트 재인증(auth/requires-recent-login) 문제 없이
+// 팀 정리 + Firestore 데이터 + Storage 사진 + Auth 계정까지 한 번에 삭제한다.
+exports.deleteAccount = onCall({
+  region: 'asia-northeast3',
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const uid = request.auth.uid;
+  const db = getFirestore();
+  const userRef = db.collection('users').doc(uid);
+
+  const userSnap = await userRef.get();
+  const teamId = userSnap.exists ? userSnap.data().teamId : null;
+
+  if (teamId) {
+    const teamDocRef = db.collection('teams').doc(teamId);
+    const teamSnap = await teamDocRef.get();
+    if (teamSnap.exists) {
+      if (teamSnap.data().leaderUid === uid) {
+        // 팀장 계정 삭제 → 팀 해체(팀원들은 다음 로그인 시 개인으로 이관됨)
+        const batch = db.batch();
+        batch.update(teamDocRef, {disbanded: true, disbandedAt: FieldValue.serverTimestamp()});
+        if (teamSnap.data().inviteCode) {
+          batch.update(db.collection('inviteCodes').doc(teamSnap.data().inviteCode), {active: false});
+        }
+        await batch.commit();
+      } else {
+        // 팀원 계정 삭제 → 팀에서만 제거(본인 기록은 어차피 전부 삭제되니 이관 불필요)
+        await teamDocRef.collection('members').doc(uid).delete();
+        await teamDocRef.update({memberCount: FieldValue.increment(-1)});
+      }
+    }
+  }
+
+  // Firestore 하위 컬렉션 삭제 (works/payments/dailyNotes)
+  for (const sub of ['works', 'payments', 'dailyNotes']) {
+    const snap = await userRef.collection(sub).get();
+    if (!snap.empty) {
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+  await userRef.delete();
+
+  // 작업 사진(Storage) 삭제 — 실패해도 계정 삭제 자체는 계속 진행
+  try {
+    await getStorage().bucket().deleteFiles({prefix: `workPhotos/${uid}/`});
+  } catch (e) {
+    console.warn('작업 사진 삭제 실패:', e.message);
+  }
+
+  await getAuth().deleteUser(uid);
+
+  return {success: true};
 });

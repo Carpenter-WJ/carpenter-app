@@ -1529,6 +1529,23 @@ function doSignOut() {
   }
   auth.signOut();
 }
+async function deleteAccount() {
+  if (!confirm('계정을 삭제하면 현장·정산·통계 등 모든 기록이 영구적으로 삭제되며 복구할 수 없습니다.\n정말 삭제하시겠습니까?')) return;
+  if (!confirm('마지막 확인입니다.\n계정과 모든 데이터를 삭제할까요?')) return;
+  try {
+    const fn = firebase.app().functions('asia-northeast3').httpsCallable('deleteAccount');
+    await fn();
+    if (window.Capacitor && Capacitor.isNativePlatform()) {
+      try { await Purchases.logOut(); } catch (e) {}
+    }
+    await auth.signOut();
+    alert('계정이 삭제되었습니다.');
+    location.reload();
+  } catch (e) {
+    console.error('계정 삭제 오류:', e);
+    alert('계정 삭제 중 오류가 발생했어요: ' + (e.message || e));
+  }
+}
 function todayStr() { const t=new Date(); return ymd(t.getFullYear(), t.getMonth(), t.getDate()); }
 function ymd(y,m,d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 function parsD(s) { const [y,m,d]=s.split('-').map(Number); return {y,m:m-1,d}; }
