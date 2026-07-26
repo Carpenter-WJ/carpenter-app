@@ -2390,6 +2390,73 @@ async function submitFeedback() {
   }
 }
 
+// ── 문의하기 관리자 화면 (squitle88@gmail.com 전용) ──
+const FEEDBACK_ADMIN_EMAIL = 'squitle88@gmail.com';
+function isFeedbackAdmin() {
+  return !!(currentUser && currentUser.email === FEEDBACK_ADMIN_EMAIL);
+}
+let DB_feedbackAll = [];
+let _fbAdminListener = null;
+function startFeedbackAdminListener() {
+  if (_fbAdminListener) { _fbAdminListener(); _fbAdminListener = null; }
+  const item = document.getElementById('adminFeedbackItem');
+  if (item) item.style.display = isFeedbackAdmin() ? '' : 'none';
+  if (!isFeedbackAdmin()) return;
+  _fbAdminListener = fsdb.collection('feedback').orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      DB_feedbackAll = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderFeedbackAdminList();
+    }, e => console.warn('전체 문의 로드 오류:', e.message));
+}
+function stopFeedbackAdminListener() {
+  if (_fbAdminListener) { _fbAdminListener(); _fbAdminListener = null; }
+}
+function openFeedbackAdminOv() {
+  renderFeedbackAdminList();
+  openOv('feedbackAdminOv');
+}
+function renderFeedbackAdminList() {
+  const el = document.getElementById('feedbackAdminList');
+  if (!el) return;
+  if (DB_feedbackAll.length === 0) {
+    el.innerHTML = '<div class="notif-empty">문의가 없어요</div>';
+    return;
+  }
+  el.innerHTML = DB_feedbackAll.map(f => {
+    const replies = f.replies || [];
+    const answered = replies.length > 0;
+    return `
+    <div style="padding:14px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div style="font-weight:700;font-size:14px">${escapeHtml(f.title||'')}</div>
+        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;background:${answered?'rgba(52,199,89,.12)':'rgba(255,59,48,.12)'};color:${answered?'#34C759':'#FF3B30'};flex-shrink:0;white-space:nowrap">${answered?'답변완료':'미답변'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin:3px 0 8px">${relTime(f.createdAt)}</div>
+      <div style="font-size:13px;color:var(--text2);white-space:pre-wrap;line-height:1.6">${escapeHtml(f.description||'')}</div>
+      ${f.photoUrl ? `<img src="${f.photoUrl}" onclick="openExternalUrl('${f.photoUrl}')" style="width:70px;height:70px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:pointer">` : ''}
+      ${replies.map(r => `<div style="margin-top:8px;background:var(--bg);border-radius:10px;padding:8px 10px;font-size:12px;color:var(--text);white-space:pre-wrap">${escapeHtml(r.text||'')}</div>`).join('')}
+      <textarea id="fbAdminReply_${f.id}" rows="2" placeholder="답변 입력..." style="width:100%;margin-top:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:var(--card);color:var(--text);resize:vertical;box-sizing:border-box"></textarea>
+      <button onclick="sendFeedbackReply('${f.id}')" style="margin-top:6px;width:100%;padding:9px;background:var(--pri);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">답장 보내기</button>
+    </div>`;
+  }).join('');
+}
+async function sendFeedbackReply(feedbackId) {
+  const ta = document.getElementById(`fbAdminReply_${feedbackId}`);
+  const text = ta.value.trim();
+  if (!text) return;
+  try {
+    await fsdb.collection('feedback').doc(feedbackId).update({
+      replies: firebase.firestore.FieldValue.arrayUnion({ text, createdAt: new Date() }),
+      hasUnreadReply: true,
+    });
+    ta.value = '';
+    showToast('답장을 보냈어요');
+  } catch (e) {
+    console.error('답장 전송 오류:', e);
+    alert('전송에 실패했어요: ' + e.message);
+  }
+}
+
 function toggleNotifPanel() {
   const panel = document.getElementById('notifPanel');
   const overlay = document.getElementById('notifOverlay');
@@ -4649,11 +4716,13 @@ auth.onAuthStateChanged(user => {
     handlePortOneReturn();
     configureNativePurchases(user.uid);
     startFeedbackListener();
+    startFeedbackAdminListener();
   } else {
     currentUser = null;
     stopPendingListener();
     stopNotifListener();
     stopFeedbackListener();
+    stopFeedbackAdminListener();
     DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {}, feedback: [] };
     localStorage.removeItem('moksujilji2'); // 기기 공용 캐시라 다음 로그인 계정과 섞이지 않도록 정리
     dataMode = 'personal'; activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];

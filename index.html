@@ -331,6 +331,13 @@
         <div class="set-item-sub">사진 첨부해서 문의하면 답변을 알려드려요</div>
       </div>
     </div>
+    <div class="set-item" id="adminFeedbackItem" onclick="openFeedbackAdminOv()" style="cursor:pointer;display:none">
+      <div class="set-icon" style="background:rgba(52,120,246,.12)">🛠️</div>
+      <div class="set-text">
+        <div class="set-item-lbl">전체 문의 관리</div>
+        <div class="set-item-sub">관리자 전용</div>
+      </div>
+    </div>
   </div>
 
   <!-- 팀 -->
@@ -826,6 +833,18 @@
       <button type="button" onclick="document.getElementById('fbPhotoInput').click()" id="fbPhotoAddBtn" style="border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);background:none;cursor:pointer;width:100%">+ 사진 추가</button>
     </div>
     <button class="btn-pri" id="fbSubmitBtn" onclick="submitFeedback()">보내기</button>
+  </div>
+</div>
+
+<!-- 전체 문의 관리 모달 (관리자 전용) -->
+<div class="ov" id="feedbackAdminOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div class="sh-title" style="margin-bottom:0">전체 문의 관리</div>
+      <button onclick="closeOv('feedbackAdminOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
+    <div id="feedbackAdminList"></div>
   </div>
 </div>
 
