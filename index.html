@@ -321,6 +321,18 @@
     </div>
   </div>
 
+  <!-- 지원 -->
+  <div class="set-group-lbl">지원</div>
+  <div class="set-group">
+    <div class="set-item" onclick="openFeedbackOv()" style="cursor:pointer">
+      <div class="set-icon" style="background:rgba(230,126,34,.12)">🐛</div>
+      <div class="set-text">
+        <div class="set-item-lbl">버그 제보 / 문의하기</div>
+        <div class="set-item-sub">사진 첨부해서 문의하면 답변을 알려드려요</div>
+      </div>
+    </div>
+  </div>
+
   <!-- 팀 -->
   <div class="set-group-lbl">팀</div>
   <div class="set-group" id="teamCard"></div>
@@ -772,6 +784,48 @@
       <div style="font-size:14px;color:var(--muted);line-height:2;text-align:left;background:var(--bg);border-radius:12px;padding:14px 16px" id="teamWelcomeDesc"></div>
     </div>
     <button class="btn-pri" onclick="closeOv('teamWelcomeOv')">확인</button>
+  </div>
+</div>
+
+<!-- 문의 내역 모달 -->
+<div class="ov" id="feedbackOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div class="sh-title" style="margin-bottom:0">문의 내역</div>
+      <button onclick="closeOv('feedbackOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
+    <button class="btn-pri" style="margin-bottom:16px" onclick="openOv('feedbackNewOv')">+ 새 문의하기</button>
+    <div id="feedbackList"></div>
+  </div>
+</div>
+
+<!-- 새 문의 작성 모달 -->
+<div class="ov" id="feedbackNewOv">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div class="sh-title" style="margin-bottom:0">문의하기</div>
+      <button onclick="closeOv('feedbackNewOv')" style="background:var(--bg);border:none;border-radius:50%;width:32px;height:32px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">✕</button>
+    </div>
+    <div class="fg">
+      <label>제목</label>
+      <input type="text" id="fbTitle" placeholder="예) 정산 화면에서 오류가 나요" maxlength="60">
+    </div>
+    <div class="fg">
+      <label>자세한 내용</label>
+      <textarea id="fbDesc" rows="5" placeholder="어떤 상황에서 발생했는지 자세히 적어주시면 빨리 확인할 수 있어요" style="resize:vertical"></textarea>
+    </div>
+    <div class="fg">
+      <label>사진 첨부 <span style="font-weight:400;font-size:12px;color:var(--muted)">(선택)</span></label>
+      <input type="file" id="fbPhotoInput" accept="image/*" style="display:none" onchange="onFbPhotoSelect(event)">
+      <div id="fbPhotoPreviewWrap" style="display:none;position:relative;width:88px;margin-bottom:8px">
+        <img id="fbPhotoPreview" style="width:88px;height:88px;object-fit:cover;border-radius:10px">
+        <button onclick="removeFbPhoto()" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:#000;color:#fff;border:none;font-size:12px;cursor:pointer">✕</button>
+      </div>
+      <button type="button" onclick="document.getElementById('fbPhotoInput').click()" id="fbPhotoAddBtn" style="border:1.5px dashed var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);background:none;cursor:pointer;width:100%">+ 사진 추가</button>
+    </div>
+    <button class="btn-pri" id="fbSubmitBtn" onclick="submitFeedback()">보내기</button>
   </div>
 </div>
 

@@ -44,7 +44,7 @@ const WORK_COLORS = [
 function getColor(id) { return WORK_COLORS.find(c=>c.id===id) || WORK_COLORS[0]; }
 
 let currentUser = null;
-let DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
+let DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {}, feedback: [] };
 // ── 팀 모드 상태 ──
 let dataMode = 'personal'; // 'personal' | 'team' | 'pending'
 let activeTeamId = null;
@@ -2204,13 +2204,15 @@ function updateNotifBadge() {
   const btn = document.getElementById('notifBtn');
   if (!badge || !btn) return;
   const isTeam = dataMode === 'team';
-  btn.style.display = isTeam ? '' : 'none';
-  if (!isTeam) return;
-  const cnt = DB.notifications.filter(n => !n.isRead).length;
+  const teamCnt = isTeam ? DB.notifications.filter(n => !n.isRead).length : 0;
+  const fbCnt = (DB.feedback || []).filter(f => f.hasUnreadReply).length;
+  // 문의 답변 알림은 개인 모드에서도 봐야 해서, 종 아이콘 노출 조건을 팀모드 여부와 분리
+  btn.style.display = (isTeam || fbCnt > 0) ? '' : 'none';
+  const cnt = teamCnt + fbCnt;
   badge.style.display = cnt > 0 ? '' : 'none';
   badge.textContent = cnt > 0 ? cnt : '';
   const readAllBtn = document.getElementById('notifReadAllBtn');
-  if (readAllBtn) readAllBtn.disabled = cnt === 0;
+  if (readAllBtn) readAllBtn.disabled = teamCnt === 0;
 }
 
 function relTime(ts) {
@@ -2229,7 +2231,14 @@ const NOTIF_ICON = { pay_request:'💰', wage_modified:'✏️', wage_added:'➕
 function renderNotifPanel() {
   const el = document.getElementById('notifList');
   if (!el) return;
-  const sorted = [...DB.notifications].sort((a, b) => {
+  const teamItems = DB.notifications.map(n => ({ ...n, _kind: 'team' }));
+  const fbItems = (DB.feedback || []).filter(f => f.hasUnreadReply).map(f => ({
+    id: f.id, _kind: 'feedback',
+    message: `문의하신 "${f.title}"에 답변이 달렸어요`,
+    createdAt: (f.replies && f.replies.length) ? f.replies[f.replies.length - 1].createdAt : f.createdAt,
+    isRead: false,
+  }));
+  const sorted = [...teamItems, ...fbItems].sort((a, b) => {
     const ta = a.createdAt?.toDate?.() || new Date(0);
     const tb = b.createdAt?.toDate?.() || new Date(0);
     return tb - ta;
@@ -2239,23 +2248,146 @@ function renderNotifPanel() {
     return;
   }
   el.innerHTML = sorted.map(n => {
-    const icon = NOTIF_ICON[n.type] || '🔔';
+    const isFeedback = n._kind === 'feedback';
+    const icon = isFeedback ? '💬' : (NOTIF_ICON[n.type] || '🔔');
     const unread = !n.isRead;
     let actionHtml = '';
     if (unread && teamRole === 'leader' && n.type === 'pay_request') {
       actionHtml = `<div class="notif-item-action"><button onclick="openPayDetail('${n.wageId}');markNotifRead('${n.id}');closeNotifPanel()">정산 처리</button></div>`;
     }
+    const readBtn = (unread && !isFeedback)
+      ? `<button onclick="markNotifRead('${n.id}')" style="background:none;border:1px solid var(--border);border-radius:12px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;padding:3px 9px;flex-shrink:0;align-self:center;white-space:nowrap">읽음</button>`
+      : '';
     return `
-      <div class="notif-item${unread?' unread':''}">
+      <div class="notif-item${unread?' unread':''}"${isFeedback ? ' style="cursor:pointer" onclick="openFeedbackFromNotif(\'' + n.id + '\')"' : ''}>
         <div class="notif-item-icon">${icon}</div>
         <div class="notif-item-body">
           <div class="notif-item-msg">${escapeHtml(n.message||'')}</div>
           <div class="notif-item-time">${relTime(n.createdAt)}</div>
           ${actionHtml}
         </div>
-        ${unread?`<button onclick="markNotifRead('${n.id}')" style="background:none;border:1px solid var(--border);border-radius:12px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;padding:3px 9px;flex-shrink:0;align-self:center;white-space:nowrap">읽음</button>`:''}
+        ${readBtn}
       </div>`;
   }).join('');
+}
+
+// ── 문의하기(버그 제보) ──
+let _fbListener = null;
+let _fbPhotoBlob = null;
+function startFeedbackListener() {
+  if (_fbListener) { _fbListener(); _fbListener = null; }
+  if (!currentUser) return;
+  _fbListener = fsdb.collection('feedback').where('uid', '==', currentUser.uid)
+    .onSnapshot(snap => {
+      DB.feedback = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0));
+      updateNotifBadge();
+      renderNotifPanel();
+      renderFeedbackList();
+    }, e => console.warn('문의 내역 실시간 수신 오류:', e.message));
+}
+function stopFeedbackListener() {
+  if (_fbListener) { _fbListener(); _fbListener = null; }
+}
+function openFeedbackOv() {
+  renderFeedbackList();
+  openOv('feedbackOv');
+}
+function openFeedbackFromNotif(feedbackId) {
+  closeNotifPanel();
+  openFeedbackOv();
+  setTimeout(() => toggleFbDetail(feedbackId), 50);
+}
+function renderFeedbackList() {
+  const el = document.getElementById('feedbackList');
+  if (!el) return;
+  const list = DB.feedback || [];
+  if (list.length === 0) {
+    el.innerHTML = '<div class="notif-empty">아직 문의 내역이 없어요</div>';
+    return;
+  }
+  el.innerHTML = list.map(f => {
+    const replies = f.replies || [];
+    const hasReply = replies.length > 0;
+    return `
+    <div class="fb-item" onclick="toggleFbDetail('${f.id}')" style="cursor:pointer;padding:14px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="font-weight:600;font-size:14px">${escapeHtml(f.title||'')}</div>
+        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;background:${hasReply?'rgba(52,199,89,.12)':'rgba(142,142,147,.12)'};color:${hasReply?'#34C759':'var(--muted)'};flex-shrink:0;white-space:nowrap">${hasReply?'답변완료':'답변대기'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">${relTime(f.createdAt)}</div>
+      <div id="fbDetail_${f.id}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="font-size:13px;color:var(--text2);white-space:pre-wrap;line-height:1.6">${escapeHtml(f.description||'')}</div>
+        ${f.photoUrl ? `<img src="${f.photoUrl}" onclick="event.stopPropagation();openExternalUrl('${f.photoUrl}')" style="width:80px;height:80px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:pointer">` : ''}
+        ${replies.map(r => `
+          <div style="margin-top:10px;background:var(--bg);border-radius:10px;padding:10px 12px">
+            <div style="font-size:11px;font-weight:700;color:var(--pri);margin-bottom:4px">현장일지 답변</div>
+            <div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.6">${escapeHtml(r.text||'')}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+function toggleFbDetail(id) {
+  const el = document.getElementById(`fbDetail_${id}`);
+  if (!el) return;
+  const willOpen = el.style.display === 'none';
+  el.style.display = willOpen ? '' : 'none';
+  const f = (DB.feedback || []).find(x => x.id === id);
+  if (willOpen && f && f.hasUnreadReply) {
+    fsdb.collection('feedback').doc(id).update({ hasUnreadReply: false }).catch(() => {});
+  }
+}
+async function onFbPhotoSelect(event) {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    _fbPhotoBlob = await compressImage(file);
+    document.getElementById('fbPhotoPreview').src = URL.createObjectURL(_fbPhotoBlob);
+    document.getElementById('fbPhotoPreviewWrap').style.display = '';
+    document.getElementById('fbPhotoAddBtn').style.display = 'none';
+  } catch (e) {
+    alert('사진을 불러오지 못했어요: ' + e.message);
+  }
+}
+function removeFbPhoto() {
+  _fbPhotoBlob = null;
+  document.getElementById('fbPhotoPreviewWrap').style.display = 'none';
+  document.getElementById('fbPhotoAddBtn').style.display = '';
+}
+async function submitFeedback() {
+  const titleEl = document.getElementById('fbTitle');
+  const descEl = document.getElementById('fbDesc');
+  const title = titleEl.value.trim();
+  const desc = descEl.value.trim();
+  if (!title || !desc) { alert('제목과 내용을 모두 입력해주세요.'); return; }
+  const btn = document.getElementById('fbSubmitBtn');
+  btn.disabled = true; btn.textContent = '보내는 중...';
+  try {
+    let photoUrl = null;
+    if (_fbPhotoBlob) {
+      const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`;
+      photoUrl = await withRetry(async () => {
+        const ref = storage.ref(`feedbackPhotos/${currentUser.uid}/${fileName}`);
+        await ref.put(_fbPhotoBlob, { contentType: 'image/jpeg' });
+        return ref.getDownloadURL();
+      });
+    }
+    await fsdb.collection('feedback').add({
+      uid: currentUser.uid, title, description: desc, photoUrl,
+      hasUnreadReply: false, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    titleEl.value = ''; descEl.value = '';
+    removeFbPhoto();
+    closeOv('feedbackNewOv');
+    showToast('문의가 접수됐어요');
+  } catch (e) {
+    console.error('문의 등록 오류:', e);
+    alert('네트워크가 불안정해서 등록에 실패했어요. 다시 시도해주세요.');
+  } finally {
+    btn.disabled = false; btn.textContent = '보내기';
+  }
 }
 
 function toggleNotifPanel() {
@@ -4281,9 +4413,9 @@ function renderPremUpgradeOv(reasonText) {
   } else {
     html += `<div class="pt-web-redirect">
       <div style="font-size:15px;font-weight:700;margin-bottom:8px">앱에서 프리미엄을 이용해주세요</div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:18px">프리미엄 결제는 아이폰·안드로이드 앱에서만 가능해요.<br>앱을 설치한 뒤 로그인하면 그대로 이어서 쓸 수 있어요.</div>
-      <a class="btn-pri" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none;margin-bottom:8px" href="https://apps.apple.com/app/id6791999893" target="_blank" rel="noopener">앱스토어에서 받기</a>
-      <a class="btn-out" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none" href="https://play.google.com/store/apps/details?id=com.hyunjangilji.app" target="_blank" rel="noopener">Google Play에서 받기</a>
+      <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:18px">프리미엄 결제는 앱에서만 가능해요.<br>앱을 설치한 뒤 로그인하면 그대로 이어서 쓸 수 있어요.</div>
+      <a class="btn-pri" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none" href="https://apps.apple.com/app/id6791999893" target="_blank" rel="noopener">앱스토어에서 받기</a>
+      <!-- TODO: 안드로이드가 프로덕션(또는 공개 테스트)으로 승급되면 Google Play 버튼 다시 추가 -->
     </div>`;
   }
   document.getElementById('premUpgradeCards').innerHTML = html;
@@ -4516,11 +4648,13 @@ auth.onAuthStateChanged(user => {
     initPTR();
     handlePortOneReturn();
     configureNativePurchases(user.uid);
+    startFeedbackListener();
   } else {
     currentUser = null;
     stopPendingListener();
     stopNotifListener();
-    DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
+    stopFeedbackListener();
+    DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {}, feedback: [] };
     localStorage.removeItem('moksujilji2'); // 기기 공용 캐시라 다음 로그인 계정과 섞이지 않도록 정리
     dataMode = 'personal'; activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     loginScreen.style.display = 'flex';

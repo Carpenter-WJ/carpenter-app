@@ -37,6 +37,21 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
+    // 버그 제보/문의하기. 본인 것만 읽고 쓸 수 있으며, 클라이언트는 hasUnreadReply
+    // 필드(답변 읽음 처리)만 수정 가능 — 답변(replies) 작성은 Firebase 콘솔에서
+    // 관리자(개발자)가 직접 하므로 클라이언트 규칙에는 반영하지 않음.
+    match /feedback/{feedbackId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.description is string
+        && request.resource.data.hasUnreadReply == false;
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasUnreadReply']);
+      allow delete: if false;
+    }
+
     // ── 초대 코드 조회용 최상위 컬렉션 ──
     match /inviteCodes/{code} {
       allow get: if request.auth != null;
