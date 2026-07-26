@@ -3,8 +3,7 @@
     personal: {regular: 14900, promo: 9900},
     leader: {regular: 19900, promo: 14900},
   };
-  // TODO: 최종 배포일 확정되면 채워넣기 — 배포 후 1개월간 오픈 기념가 적용
-  const LAUNCH_DATE = null;
+  const LAUNCH_DATE = '2026-07-26';
 
   function isPromoActive() {
     if (!LAUNCH_DATE) return false; // 배포일 미확정 상태에서는 정가만 노출

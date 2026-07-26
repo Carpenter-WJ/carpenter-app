@@ -1524,7 +1524,6 @@ function renderTeamSettings() {
 function doSignOut() {
   if (!confirm('로그아웃 하시겠습니까?')) return;
   if (window.Capacitor && Capacitor.isNativePlatform()) {
-    FirebaseAuthentication.signOut().catch(() => {});
     Purchases.logOut().catch(() => {});
   }
   auth.signOut();
@@ -2113,7 +2112,7 @@ function addGuestRow() {
     <label class="mw-check-label" style="flex:1;min-width:0">
       <input type="checkbox" class="mw-check" value="guest_${++guestCounter}" checked>
       <input type="text" class="mw-guest-name" placeholder="이름 입력" maxlength="20"
-        style="border:none;border-bottom:1px solid var(--border);background:transparent;color:var(--fg);font-size:14px;font-weight:600;width:80px;outline:none">
+        style="border:none;border-bottom:1px solid var(--border);background:transparent;color:var(--fg);font-size:16px;font-weight:600;width:80px;outline:none">
     </label>
     <input type="number" class="mw-wage" placeholder="일당" value="${defaultWage||''}" inputmode="numeric">
     <span style="font-size:11px;color:var(--muted)">원</span>
@@ -4253,7 +4252,7 @@ function renderPremUpgradeOv(reasonText) {
 
   const isNativeApp = window.Capacitor && Capacitor.isNativePlatform();
   const consentRow = document.getElementById('premConsentRow');
-  if (consentRow) consentRow.style.display = isNativeApp ? 'none' : '';
+  if (consentRow) consentRow.style.display = 'none'; // 웹 결제(PortOne) 중단으로 청약철회 동의 UI 불필요
   const restoreBtn = document.getElementById('premRestoreBtn');
   if (restoreBtn) restoreBtn.style.display = isNativeApp ? '' : 'none';
 
@@ -4280,31 +4279,12 @@ function renderPremUpgradeOv(reasonText) {
   } else if (isNativeApp) {
     html += renderNativePremCards(alreadyPersonal, personalFeatures, leaderFeatures);
   } else {
-    const promo = isPromoActive();
-    const personalPrice = getPrice('personal');
-    const leaderPrice = getPrice('leader');
-    if (alreadyPersonal) {
-      html += `<div class="pt-current">✓ 프리미엄 이용 중이에요</div>`;
-    } else {
-      html += ptCardHtml({
-        title: '프리미엄', subtitle: '개인 사용자 · 팀원 공통',
-        price: personalPrice, originalPrice: promo ? PRICING.personal.regular : null,
-        features: personalFeatures, ctaLabel: '프리미엄 시작하기',
-        ctaOnclick: `startCheckout('personal')`,
-      });
-    }
-    const upgradeAmount = getCheckoutAmount('leader', premiumTier);
-    const upgradeDiff = alreadyPersonal ? upgradeAmount : null;
-    html += ptCardHtml({
-      title: '팀장 프리미엄', subtitle: '팀을 운영하는 팀장 전용',
-      price: upgradeDiff != null ? upgradeDiff : leaderPrice,
-      originalPrice: upgradeDiff != null ? null : (promo ? PRICING.leader.regular : null),
-      features: leaderFeatures,
-      ctaLabel: upgradeDiff != null ? `차액 ${fmtW(upgradeDiff)}만 결제하기` : '팀장 프리미엄 시작하기',
-      ctaOnclick: `startCheckout('leader')`,
-      highlight: true,
-      badge: upgradeDiff != null ? '업그레이드' : (promo ? '오픈 기념가' : null),
-    });
+    html += `<div class="pt-web-redirect">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px">앱에서 프리미엄을 이용해주세요</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:18px">프리미엄 결제는 아이폰·안드로이드 앱에서만 가능해요.<br>앱을 설치한 뒤 로그인하면 그대로 이어서 쓸 수 있어요.</div>
+      <a class="btn-pri" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none;margin-bottom:8px" href="https://apps.apple.com/app/id6791999893" target="_blank" rel="noopener">앱스토어에서 받기</a>
+      <a class="btn-out" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none" href="https://play.google.com/store/apps/details?id=com.hyunjangilji.app" target="_blank" rel="noopener">Google Play에서 받기</a>
+    </div>`;
   }
   document.getElementById('premUpgradeCards').innerHTML = html;
   const consentChk = document.getElementById('premConsentChk');

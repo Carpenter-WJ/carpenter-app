@@ -196,8 +196,8 @@
     .mw-row { display:flex; align-items:center; gap:6px; padding:9px 0; border-bottom:1px solid var(--border); }
     .mw-check-label { display:flex; align-items:center; gap:7px; flex:1; font-size:14px; font-weight:500; cursor:pointer; min-width:0; }
     .mw-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .mw-wage { width:86px; text-align:right; border:1.5px solid var(--border); border-radius:8px; padding:5px 8px; font-size:14px; background:var(--bg); color:var(--text); }
-    .mw-unit { width:68px; border:1.5px solid var(--border); border-radius:8px; padding:5px 4px; font-size:13px; background:var(--bg); color:var(--text); }
+    .mw-wage { width:92px; text-align:right; border:1.5px solid var(--border); border-radius:8px; padding:5px 6px; font-size:16px; background:var(--bg); color:var(--text); }
+    .mw-unit { width:72px; border:1.5px solid var(--border); border-radius:8px; padding:5px 2px; font-size:16px; background:var(--bg); color:var(--text); }
     .mw-tax-label { display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0; cursor:pointer; }
     .mw-tax-label input { width:16px; height:16px; accent-color:var(--pri); cursor:pointer; }
     .mw-tax-label span { font-size:9px; color:var(--muted); font-weight:600; }
@@ -274,7 +274,7 @@
 
     /* 일일 메모 */
     .day-memo-area { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
-    .day-memo-area textarea { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:inherit; color:var(--text); background:var(--card); resize:none; box-sizing:border-box; line-height:1.5; outline:none; transition:border-color .18s; -webkit-appearance:none; }
+    .day-memo-area textarea { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; font-size:16px; font-family:inherit; color:var(--text); background:var(--card); resize:none; box-sizing:border-box; line-height:1.5; outline:none; transition:border-color .18s; -webkit-appearance:none; }
     .day-memo-area textarea:focus { border-color:var(--pri); }
     .day-photo-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
     .day-photo-grid:empty { margin-top:0; }
@@ -498,7 +498,7 @@
     .set-text { flex:1; min-width:0; }
     .set-item-lbl { font-size:15px; font-weight:500; color:var(--text); }
     .set-item-sub { font-size:12px; color:var(--muted); margin-top:2px; }
-    .set-item-input { width:120px; text-align:right; border:none; background:none; font-size:15px; font-weight:600; color:var(--pri); outline:none; }
+    .set-item-input { width:120px; text-align:right; border:none; background:none; font-size:16px; font-weight:600; color:var(--pri); outline:none; }
     /* 설정 토글 스위치 */
     .sw-wrap { position:relative; display:inline-block; width:44px; height:26px; flex-shrink:0; cursor:pointer; }
     .sw-wrap input { opacity:0; width:0; height:0; position:absolute; }
