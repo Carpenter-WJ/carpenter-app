@@ -4481,8 +4481,8 @@ function renderPremUpgradeOv(reasonText) {
     html += `<div class="pt-web-redirect">
       <div style="font-size:15px;font-weight:700;margin-bottom:8px">앱에서 프리미엄을 이용해주세요</div>
       <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:18px">프리미엄 결제는 앱에서만 가능해요.<br>앱을 설치한 뒤 로그인하면 그대로 이어서 쓸 수 있어요.</div>
-      <a class="btn-pri" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none" href="https://apps.apple.com/app/id6791999893" target="_blank" rel="noopener">앱스토어에서 받기</a>
-      <!-- TODO: 안드로이드가 프로덕션(또는 공개 테스트)으로 승급되면 Google Play 버튼 다시 추가 -->
+      <a class="btn-pri" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none;margin-bottom:8px" href="https://apps.apple.com/app/id6791999893" target="_blank" rel="noopener">앱스토어에서 받기</a>
+      <a class="btn-out" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none" href="https://play.google.com/store/apps/details?id=com.hyunjangilji.app" target="_blank" rel="noopener">Google Play에서 받기</a>
     </div>`;
   }
   document.getElementById('premUpgradeCards').innerHTML = html;
