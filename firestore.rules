@@ -57,6 +57,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // 앱 버전 안내용 설정 문서. 로그인 사용자는 읽기만, 쓰기는 콘솔에서
+    // 관리자가 직접(클라이언트 쓰기 완전 차단).
+    match /config/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // ── 초대 코드 조회용 최상위 컬렉션 ──
     match /inviteCodes/{code} {
       allow get: if request.auth != null;

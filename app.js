@@ -221,6 +221,36 @@ function openExternalUrl(url) {
     window.open(url, '_blank');
   }
 }
+
+// ── 앱 업데이트 안내 (부드러운 안내 — 닫고 계속 쓸 수 있음) ──
+// Firestore config/latestVersion 문서를 심사 통과 후 수동으로 갱신하는 방식.
+// 문서/필드가 없으면 조용히 넘어감(구버전 클라이언트가 이 기능 자체를 몰라도 안전).
+function compareVersions(a, b) {
+  const pa = String(a || '0').split('.').map(Number);
+  const pb = String(b || '0').split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0, nb = pb[i] || 0;
+    if (na !== nb) return na - nb;
+  }
+  return 0;
+}
+async function checkAppUpdate() {
+  if (!(window.Capacitor && Capacitor.isNativePlatform() && window.CapacitorApp)) return;
+  try {
+    const info = await CapacitorApp.getInfo();
+    const platform = Capacitor.getPlatform();
+    const snap = await fsdb.collection('config').doc('latestVersion').get();
+    if (!snap.exists) return;
+    const latest = snap.data()[platform];
+    if (!latest || compareVersions(info.version, latest) >= 0) return;
+    const storeUrl = platform === 'ios'
+      ? 'https://apps.apple.com/app/id6791999893'
+      : 'https://play.google.com/store/apps/details?id=com.hyunjangilji.app';
+    const btn = document.getElementById('updateNudgeBtn');
+    if (btn) btn.onclick = () => openExternalUrl(storeUrl);
+    openOv('updateNudgeOv');
+  } catch (e) { console.warn('업데이트 확인 실패:', e.message); }
+}
 function renderWorkPhotoGrid() {
   const grid = document.getElementById('workPhotoGrid');
   if (!grid) return;
@@ -4776,6 +4806,7 @@ auth.onAuthStateChanged(user => {
     configureNativePurchases(user.uid);
     startFeedbackListener();
     startFeedbackAdminListener();
+    checkAppUpdate();
   } else {
     currentUser = null;
     stopPendingListener();
