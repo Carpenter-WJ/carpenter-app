@@ -216,7 +216,8 @@
       background:linear-gradient(135deg,var(--pri),var(--dark));
       border-radius:16px; padding:20px; margin:14px 14px 0; color:#fff;
     }
-    .bc-row { display:flex; gap:24px; }
+    .bc-row { display:flex; flex-wrap:wrap; gap:14px 20px; }
+    .bc-item { flex:1; min-width:88px; }
     .bc-item .bi-l { font-size:11px; opacity:.8; }
     .bc-item .bi-v { font-size:15px; font-weight:700; margin-top:2px; }
 
@@ -432,7 +433,7 @@
     .stat-hero { margin:8px 14px 4px; background:var(--card); border-radius:16px; padding:18px 16px; }
     .stat-hero-lbl { font-size:12px; color:var(--muted); font-weight:600; margin-bottom:2px; }
     .stat-hero-val { font-size:32px; font-weight:900; color:var(--fg); line-height:1.1; margin-bottom:14px; }
-    .stat-hero-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .stat-hero-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr)); gap:10px; }
     .stat-hero-box { background:var(--bg); border-radius:12px; padding:11px 14px; }
     .shb-lbl { font-size:11px; color:var(--muted); font-weight:600; }
     .shb-val { font-size:20px; font-weight:800; margin-top:3px; }

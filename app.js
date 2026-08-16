@@ -77,6 +77,8 @@ let selDate = null;
 let selWorkId = null;
 let editDates = [];
 let editColor = 'orange';
+let editExpenses = [];
+const EXPENSE_CATEGORIES = ['식대','철물비','자재비','유류비','숙박비','기타'];
 function movePay(d) { payM+=d; if(payM>11){payM=0;payY++;} if(payM<0){payM=11;payY--;} renderPay(); }
 function setPayFilter(f) { payFilter=f; renderPay(); }
 
@@ -469,7 +471,7 @@ function buildMigratedWork(wageDoc, jobById, teamName) {
     contact: job.contact || '', phone: job.phone || '',
     memo: job.memo || '', color: job.color || '#007AFF',
     dates: wg.dates || [], unit: wg.unit || 1,
-    wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], isPaid: wg.isPaid || false,
+    wage: wg.wage, taxWithheld: wg.taxWithheld||false, photos: wg.photos||[], expenses: wg.expenses||[], isPaid: wg.isPaid || false,
     workDesc: wg.workDesc || '',
     createdBy: wg.createdBy, teamName: teamName
   };
@@ -488,7 +490,7 @@ async function save() {
         if (!canSeeWage(w)) return;
         batch.set(t.collection('wages').doc(w.id), {
           jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, taxWithheld: w.taxWithheld||false, isPaid: w.isPaid,
-          photos: w.photos||[], workDesc: w.workDesc || '',
+          photos: w.photos||[], expenses: w.expenses||[], workDesc: w.workDesc || '',
           ownerUid: w.ownerUid || w.createdBy,
           createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -532,7 +534,7 @@ async function saveOneWork(w) {
     if (!canSeeWage(w)) return; // wage 수정 권한 없을 때 skip (job 정보는 saveJobInfo가 처리)
     await teamRef().collection('wages').doc(w.id).set({
       jobId: w.jobId, dates: w.dates, unit: w.unit, wage: w.wage, taxWithheld: w.taxWithheld||false, isPaid: w.isPaid,
-      workDesc: w.workDesc || '', photos: w.photos||[],
+      workDesc: w.workDesc || '', photos: w.photos||[], expenses: w.expenses||[],
       ownerUid: w.ownerUid || w.createdBy,
       createdBy: w.createdBy, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -612,7 +614,7 @@ async function loadTeamData() {
       site: job.site || '(삭제된 현장)', address: job.address, contact: job.contact, phone: job.phone, memo: job.memo, color: job.color,
       jobCreatedBy: job.createdBy,
       dates: wg.dates, unit: wg.unit, wage: wg.wage, taxWithheld: wg.taxWithheld||false, isPaid: wg.isPaid,
-      photos: wg.photos||[],
+      photos: wg.photos||[], expenses: wg.expenses||[],
       ownerUid: wg.ownerUid || (!wg.isGuest ? wg.createdBy : null),
       guestName: wg.guestName || null, isGuest: wg.isGuest || false,
       workDesc: wg.workDesc || '', createdBy: wg.createdBy
@@ -935,8 +937,8 @@ async function migrateToTeam(teamDoc) {
   for (let i = 0; i < DB.works.length; i += 450) {
     const batch = fsdb.batch();
     DB.works.slice(i, i + 450).forEach(w => {
-      const { wage, isPaid, unit, dates, taxWithheld, photos, workDesc } = w;
-      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, taxWithheld: !!taxWithheld, photos: photos||[], workDesc: workDesc||'', isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const { wage, isPaid, unit, dates, taxWithheld, photos, expenses, workDesc } = w;
+      batch.set(teamDoc.collection('wages').doc(w.id), { jobId: w.id, dates, unit, wage, taxWithheld: !!taxWithheld, photos: photos||[], expenses: expenses||[], workDesc: workDesc||'', isPaid, ownerUid: currentUser.uid, createdBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     await batch.commit();
   }
@@ -1556,7 +1558,8 @@ function fmtDate(s) {
   return `${String(m+1).padStart(2,'0')}.${String(d).padStart(2,'0')}(${dow})`;
 }
 function netWage(w) { return w.taxWithheld ? Math.floor(Number(w.wage) * 0.967) : Number(w.wage); }
-function expAmt(w) { return w.wage==null ? null : (w.dates||[]).length * netWage(w) * Number(w.unit || 1); }
+function expenseTotal(w) { return (w.expenses||[]).reduce((s,e)=>s+Number(e.amount||0), 0); }
+function expAmt(w) { return w.wage==null ? null : (w.dates||[]).length * netWage(w) * Number(w.unit || 1) + expenseTotal(w); }
 function rcvAmt(wId) { return DB.payments.filter(p=>p.workId===wId).reduce((s,p)=>s+Number(p.amount),0); }
 
 function formatDatesShort(dates) {
@@ -1916,6 +1919,7 @@ function openDayOv(ds) {
 function openWorkOv(workId, prefillDate) {
   closeAll();
   editDates=[];
+  editExpenses=[];
   document.getElementById('editWorkId').value=workId||'';
   document.getElementById('workOvTitle').textContent=workId?'작업 수정':'작업 추가';
   let wageEditable=true;
@@ -1929,6 +1933,7 @@ function openWorkOv(workId, prefillDate) {
       document.getElementById('inTaxWithheld').checked=wageEditable&&!!w.taxWithheld;
       document.getElementById('inUnit').value=String(w.unit||1);
       editDates=[...w.dates]; editColor=w.color||'orange';
+      editExpenses=wageEditable?(w.expenses||[]).map(e=>({...e})):[];
       document.getElementById('inWorkDesc').value=w.workDesc||'';
       document.getElementById('inAddress').value=w.address||'';
       document.getElementById('inContact').value=w.contact||'';
@@ -1960,6 +1965,8 @@ function openWorkOv(workId, prefillDate) {
   }
   document.getElementById('wageFg').style.display=wageEditable?'':'none';
   document.getElementById('wageHiddenNote').style.display=wageEditable?'none':'';
+  document.getElementById('expenseFg').style.display=wageEditable?'':'none';
+  renderExpenseList();
   document.getElementById('siteDropdown').style.display='none';
   // 팀장 전용 UI
   const ownerFg=document.getElementById('ownerFg');
@@ -1980,10 +1987,11 @@ function openWorkOv(workId, prefillDate) {
         if(job){ initVis=job.visibility||'all'; initShared=job.sharedWith||[]; }
       }
     } else {
-      // 신규 모드: 팀원 다중 입력, 단일 일당/품수 숨김
+      // 신규 모드: 팀원 다중 입력, 단일 일당/품수 숨김 (경비는 이 모드에서 미지원 — 등록 후 개별 수정에서 추가)
       ownerFg.style.display='none'; memberWagesFg.style.display='';
       document.getElementById('wageFg').style.display='none';
       document.getElementById('unitFg').style.display='none';
+      document.getElementById('expenseFg').style.display='none';
       renderMemberWageList();
     }
     setVisibility(initVis, initShared);
@@ -2170,6 +2178,35 @@ function renderDateChips() {
   if(lbl) lbl.textContent=editDates.length>0?`일한 날짜 (총 ${editDates.length}일)`:'일한 날짜';
 }
 function removeDate(d) { editDates=editDates.filter(x=>x!==d); renderDateChips(); }
+
+// ── 경비(식대/철물비 등, 일당과 별도 관리) ──
+function renderExpenseList() {
+  const el = document.getElementById('expenseList');
+  if (!el) return;
+  el.innerHTML = editExpenses.map((exp, i) => `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+      <select onchange="updateExpenseField(${i},'category',this.value)" style="flex:1.1;padding:10px 8px;border:1.5px solid var(--border);border-radius:9px;font-size:16px;background:var(--card);color:var(--text)">
+        ${EXPENSE_CATEGORIES.map(c => `<option value="${c}"${exp.category===c?' selected':''}>${c}</option>`).join('')}
+      </select>
+      <input type="number" placeholder="금액" inputmode="numeric" value="${exp.amount||''}" oninput="updateExpenseField(${i},'amount',this.value)" style="flex:1;padding:10px 8px;border:1.5px solid var(--border);border-radius:9px;font-size:16px;background:var(--card);color:var(--text)">
+      <button type="button" onclick="removeExpenseRow(${i})" style="flex-shrink:0;width:32px;height:32px;border:none;background:var(--bg);border-radius:50%;color:var(--muted);font-size:16px;cursor:pointer">✕</button>
+    </div>
+    ${exp.category==='기타'?`<input type="text" placeholder="내용 (선택)" value="${escapeHtml(exp.note||'')}" oninput="updateExpenseField(${i},'note',this.value)" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:9px;font-size:16px;background:var(--card);color:var(--text);margin:-4px 0 8px;box-sizing:border-box">`:''}
+  `).join('');
+}
+function addExpenseRow() {
+  editExpenses.push({category:'식대', amount:''});
+  renderExpenseList();
+}
+function removeExpenseRow(idx) {
+  editExpenses.splice(idx, 1);
+  renderExpenseList();
+}
+function updateExpenseField(idx, field, value) {
+  if (!editExpenses[idx]) return;
+  editExpenses[idx][field] = value;
+  if (field === 'category') renderExpenseList(); // 기타 선택 시 내용 입력창 토글 위해 다시 그림
+}
 
 // ── 공개 범위 / 알림 ──
 function setVisibility(vis, sharedWith) {
@@ -2809,15 +2846,16 @@ async function saveWork() {
     const wage=Number(document.getElementById('inWage').value);
     const taxWithheld=!!document.getElementById('inTaxWithheld').checked;
     if(!wage){alert('일당을 입력해 주세요.');return;}
+    const expenses=editExpenses.filter(e=>Number(e.amount)>0).map(e=>({category:e.category, amount:Number(e.amount), ...(e.note?{note:e.note}:{})}));
     let savedW;
     if(existing){
       existing.site=site;existing.unit=unit;existing.dates=[...editDates].sort();
       existing.color=editColor;existing.workDesc=workDesc;existing.address=address;existing.contact=contact;
-      existing.phone=phone;existing.memo=memo;existing.wage=wage;existing.taxWithheld=taxWithheld;
+      existing.phone=phone;existing.memo=memo;existing.wage=wage;existing.taxWithheld=taxWithheld;existing.expenses=expenses;
       savedW=existing;
     } else {
       const wId=Date.now().toString(36);
-      savedW={id:wId,site,workDesc,address,contact,phone,memo,wage,taxWithheld,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
+      savedW={id:wId,site,workDesc,address,contact,phone,memo,wage,taxWithheld,expenses,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
       DB.works.push(savedW);
     }
     DB.works.sort((a,b)=>(b.dates[b.dates.length-1]||'').localeCompare(a.dates[a.dates.length-1]||''));
@@ -2848,11 +2886,12 @@ async function saveWork() {
     if(existingJob){ jobVis=existingJob.visibility||'all'; jobSharedWith=existingJob.sharedWith||[]; }
   }
   const wageEditable=!existing||canSeeWage(existing);
-  let wage, taxWithheld;
+  let wage, taxWithheld, expenses;
   if(wageEditable){
     wage=Number(document.getElementById('inWage').value);
     taxWithheld=!!document.getElementById('inTaxWithheld').checked;
     if(!wage){alert('일당을 입력해 주세요.');return;}
+    expenses=editExpenses.filter(e=>Number(e.amount)>0).map(e=>({category:e.category, amount:Number(e.amount), ...(e.note?{note:e.note}:{})}));
   }
   const jobDefaultTax=dataMode==='team'?!!document.getElementById('inJobDefaultTax')?.checked:false;
 
@@ -2860,7 +2899,7 @@ async function saveWork() {
   if(existing){
     existing.site=site;existing.unit=unit;existing.dates=editDates.sort();existing.color=editColor;
     existing.workDesc=workDesc;existing.address=address;existing.contact=contact;existing.phone=phone;existing.memo=memo;
-    if(wageEditable){ existing.wage=wage; existing.taxWithheld=taxWithheld; }
+    if(wageEditable){ existing.wage=wage; existing.taxWithheld=taxWithheld; existing.expenses=expenses; }
     if(dataMode==='team'){
       saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
       // 팀장이 타인 일당 수정 시 알림
@@ -2891,7 +2930,7 @@ async function saveWork() {
       }
     }
     const wId=Date.now().toString(36);
-    const w={id:wId,site,workDesc,wage,taxWithheld,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
+    const w={id:wId,site,workDesc,wage,taxWithheld,expenses,unit,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
     if(dataMode==='team'){ w.createdBy=currentUser.uid; w.ownerUid=ownerUid; w.jobId=jobId; }
     DB.works.push(w);
     _savedWork = w;
@@ -3089,6 +3128,7 @@ function renderPay() {
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}).length;
     return s+cnt*netWage(w)*Number(w.unit||1);
   },0);
+  const mExpense=monthWorks.reduce((s,w)=>s+expenseTotal(w),0);
   const mUnpaid=monthWorks.filter(w=>!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
 
   const isLeaderPay = dataMode==='team' && teamRole==='leader' && monthWorks.some(w=>!w.isPersonal);
@@ -3096,6 +3136,7 @@ function renderPay() {
     <div class="bal-card">
       <div class="bc-row">
         <div class="bc-item"><div class="bi-l">${isLeaderPay?'이달 총 인건비':'이달 총 일당'}</div><div class="bi-v">${fmtW(mWage)}</div></div>
+        ${mExpense>0?`<div class="bc-item"><div class="bi-l">이달 경비</div><div class="bi-v">${fmtW(mExpense)}</div></div>`:''}
         <div class="bc-item"><div class="bi-l">${isLeaderPay?'이달 미지급금':'이달 미수금'}</div><div class="bi-v" style="color:${mUnpaid>0?'var(--red)':'var(--muted)'}">${fmtW(mUnpaid)}</div></div>
       </div>
     </div>`;
@@ -3173,7 +3214,9 @@ function renderPay() {
 function sharePayInfo(wId) {
   const w=DB.works.find(x=>x.id===wId); if(!w)return;
   const exp=expAmt(w), rcv=rcvAmt(wId), outstanding=Math.max(0,exp-rcv);
-  const text=`[${w.site}] 미수금 안내\n미수금: ${fmtW(outstanding)}\n(총 예상: ${fmtW(exp)}, 수령: ${fmtW(rcv)})`;
+  const expTotal=expenseTotal(w);
+  const expLine=expTotal>0?`\n(경비 ${fmtW(expTotal)} 포함: ${(w.expenses||[]).map(e=>`${e.category} ${fmtW(e.amount)}`).join(', ')})`:'';
+  const text=`[${w.site}] 미수금 안내\n미수금: ${fmtW(outstanding)}\n(총 예상: ${fmtW(exp)}, 수령: ${fmtW(rcv)})${expLine}`;
   if(navigator.share){navigator.share({text});}
   else{navigator.clipboard.writeText(text).then(()=>alert('클립보드에 복사됐습니다'));}
 }
@@ -3490,7 +3533,7 @@ function saveOrShareFile(filename, content) {
 function exportCSV() {
   if(dataMode==='team'&&teamRole!=='leader'){alert('팀원 모드에서는 전체 데이터 내보내기가 제한돼요.');return;}
   const short = s => s ? s.slice(5).replace('-', '/') : ''; // 'YYYY-MM-DD' → 'MM/DD'
-  const rows=[['구분','팀원명','현장명','작업 내용','작업기간','작업일수','일당(공제후)','인적공제','품수','총금액','정산상태','수령액','미수금']];
+  const rows=[['구분','팀원명','현장명','작업 내용','작업기간','작업일수','일당(공제후)','경비','인적공제','품수','총금액','정산상태','수령액','미수금']];
   DB.works.filter(w=>w.wage!=null).forEach(w=>{
     const dates=(w.dates||[]).slice().sort();
     const period = dates.length===0 ? '' : dates.length===1
@@ -3501,7 +3544,7 @@ function exportCSV() {
     const status=w.isPaid?'정산완료':(rcv>0?'부분정산':'미정산');
     const ownerName = dataMode==='team' ? (memberName(w.ownerUid||w.createdBy)||'') : '';
     const section = w.isPersonal ? '개인(날일)' : (dataMode==='team' ? '팀' : '개인');
-    rows.push([section, ownerName, w.site, w.workDesc||'', period, dates.length, netWage(w), w.taxWithheld?'3.3%':'', w.unit||1, exp, status, rcv, unpaid]);
+    rows.push([section, ownerName, w.site, w.workDesc||'', period, dates.length, netWage(w), expenseTotal(w), w.taxWithheld?'3.3%':'', w.unit||1, exp, status, rcv, unpaid]);
   });
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   saveOrShareFile(`현장일지_${todayStr()}.csv`, '﻿'+csv);
@@ -3537,12 +3580,13 @@ function printReport() {
     const p = parsD(d); return p.y === statY && p.m === statM;
   }));
 
-  let mWage = 0, sUnit = 0;
+  let mWage = 0, sUnit = 0, mExpense = 0;
   works.forEach(w => {
     const cnt = (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; }).length;
     const u = Number(w.unit||1);
     mWage += cnt * netWage(w) * u;
     sUnit += cnt * u;
+    mExpense += expenseTotal(w);
   });
   const workDays = new Set(works.flatMap(w =>
     (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; })
@@ -3557,7 +3601,7 @@ function printReport() {
   const worksRows = works.map(w => {
     const mDates = (w.dates||[]).filter(d => { const p = parsD(d); return p.y === statY && p.m === statM; });
     const u = Number(w.unit||1);
-    const total = mDates.length * netWage(w) * u;
+    const total = mDates.length * netWage(w) * u + expenseTotal(w);
     const outstanding = Math.max(0, expAmt(w) - rcvAmt(w.id));
     const statusLabel = w.isPaid ? '정산완료' : outstanding > 0 ? `미수 ${fmtW(outstanding)}` : '정산대기';
     const statusClass = w.isPaid ? 's-paid' : outstanding > 0 ? 's-unpaid' : 's-pending';
@@ -3566,6 +3610,7 @@ function printReport() {
       <td class="td-sub">${formatDatesShort(mDates)}</td>
       <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
       <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+      <td class="td-num">${expenseTotal(w)>0?fmtW(expenseTotal(w)):'—'}</td>
       <td class="td-num td-bold">${fmtW(total)}</td>
       <td class="td-center"><span class="badge ${statusClass}">${statusLabel}</span></td>
     </tr>`;
@@ -3659,6 +3704,7 @@ function printReport() {
     <div class="scard"><div class="sc-label">품수</div><div class="sc-value">${sUnitStr}품</div></div>
     <div class="scard"><div class="sc-label">현장 수</div><div class="sc-value">${works.length}곳</div></div>
     <div class="scard dark"><div class="sc-label">총 임금</div><div class="sc-value lg">${fmtW(mWage)}</div></div>
+    ${mExpense>0?`<div class="scard"><div class="sc-label">경비</div><div class="sc-value lg">${fmtW(mExpense)}</div></div>`:''}
     <div class="scard green"><div class="sc-label">수령액</div><div class="sc-value lg">${fmtW(mPaid)}</div></div>
     <div class="scard ${mOutstanding > 0 ? 'red' : 'green'}"><div class="sc-label">미수금</div><div class="sc-value lg">${mOutstanding > 0 ? fmtW(mOutstanding) : '없음'}</div></div>
   </div>
@@ -3671,6 +3717,7 @@ ${works.length > 0 ? `
     <thead><tr>
       <th>현장명</th><th>작업 기간</th>
       <th style="text-align:right">일당</th><th style="text-align:right">품수</th>
+      <th style="text-align:right">경비</th>
       <th style="text-align:right">총금액</th><th style="text-align:center">정산</th>
     </tr></thead>
     <tbody>${worksRows}</tbody>
@@ -3709,13 +3756,14 @@ function renderStat() {
   // 팀 모드에서 일반 팀원은 일당을 볼 수 있는(=본인이 등록한) 현장만 통계에 포함
   const statBase=(dataMode==='team'&&teamRole!=='leader')?DB.works.filter(w=>w.wage!=null):DB.works;
   const works=statBase.filter(w=>getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}));
-  let mWage=0, mWageBase=0, sUnit=0;
+  let mWage=0, mWageBase=0, sUnit=0, mExpense=0;
   works.forEach(w=>{
     const cnt=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}).length;
     const u=Number(w.unit||1);
     mWage+=cnt*netWage(w)*u;
     mWageBase+=cnt*netWage(w); // 품수 제외 — 순수 일당 기준
     sUnit+=cnt*u;
+    mExpense+=expenseTotal(w);
   });
   const workDays=new Set(works.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
@@ -3763,6 +3811,10 @@ function renderStat() {
           <div class="shb-val" style="color:${(mOutstanding>0||allOutstanding>0)?'var(--red)':'var(--muted)'}">${(mOutstanding/10000).toFixed(1)}만</div>
           ${allOutstanding!==mOutstanding?`<div class="shb-sub">전체 ${(allOutstanding/10000).toFixed(1)}만</div>`:''}
         </div>
+        ${mExpense>0?`<div class="stat-hero-box">
+          <div class="shb-lbl">경비</div>
+          <div class="shb-val">${(mExpense/10000).toFixed(1)}만</div>
+        </div>`:''}
       </div>
       ${annualHtml}
     </div>`;
@@ -3927,7 +3979,7 @@ function _buildWageCard(name, roleLabel, isLeaderRole, works) {
   const rows = works.map(w => {
     const mDates = (w.dates || []).filter(d => { const p = parsD(d); return p.y === wageStmtY && p.m === wageStmtM; });
     const u = Number(w.unit || 1);
-    const mAmt = mDates.length * netWage(w) * u;
+    const mAmt = mDates.length * netWage(w) * u + expenseTotal(w);
     monthTotal += mAmt;
     const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
     const badge = w.isPaid
@@ -3938,7 +3990,7 @@ function _buildWageCard(name, roleLabel, isLeaderRole, works) {
     return `<div style="display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--text)">${escapeHtml(w.site)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(netWage(w))}${u !== 1 ? ' · ' + u + '품' : ''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(netWage(w))}${u !== 1 ? ' · ' + u + '품' : ''}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}${expenseTotal(w)>0?' · 경비 '+fmtW(expenseTotal(w)):''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0;margin-left:12px">
         <div style="font-size:13px;font-weight:700;color:var(--fg)">${fmtW(mAmt)}</div>
@@ -3973,7 +4025,7 @@ function renderWageStatement() {
     const works = _wageStmtWorks(m.uid, null);
     const mTotal = works.reduce((s, w) => {
       const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
-      return s + cnt * netWage(w) * Number(w.unit||1);
+      return s + cnt * netWage(w) * Number(w.unit||1) + expenseTotal(w);
     }, 0);
     grandTotal += mTotal;
     const name = (m.customName || m.displayName || '이름 없음') + (m.uid === currentUser.uid ? ' (나)' : '');
@@ -3988,7 +4040,7 @@ function renderWageStatement() {
     if (works.length === 0) return;
     const mTotal = works.reduce((s, w) => {
       const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
-      return s + cnt * netWage(w) * Number(w.unit||1);
+      return s + cnt * netWage(w) * Number(w.unit||1) + expenseTotal(w);
     }, 0);
     grandTotal += mTotal;
     const exitEntry = teamMemberExits.find(e => e.uid === uid);
@@ -4002,7 +4054,7 @@ function renderWageStatement() {
     const gw = _wageStmtWorks(null, gName);
     const mTotal = gw.reduce((s, w) => {
       const cnt = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; }).length;
-      return s + cnt * netWage(w) * Number(w.unit||1);
+      return s + cnt * netWage(w) * Number(w.unit||1) + expenseTotal(w);
     }, 0);
     grandTotal += mTotal;
     html += _buildWageCard(gName, '외부', false, gw);
@@ -4032,7 +4084,7 @@ function printWageStatement() {
     const rows = works.map(w => {
       const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
       const u = Number(w.unit||1);
-      const mAmt = mDates.length * netWage(w) * u;
+      const mAmt = mDates.length * netWage(w) * u + expenseTotal(w);
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -4042,6 +4094,7 @@ function printWageStatement() {
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+        <td class="td-num">${expenseTotal(w)>0?fmtW(expenseTotal(w)):'—'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
       </tr>`;
@@ -4062,7 +4115,7 @@ function printWageStatement() {
     const rows = works.map(w => {
       const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
       const u = Number(w.unit||1);
-      const mAmt = mDates.length * netWage(w) * u;
+      const mAmt = mDates.length * netWage(w) * u + expenseTotal(w);
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -4072,6 +4125,7 @@ function printWageStatement() {
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+        <td class="td-num">${expenseTotal(w)>0?fmtW(expenseTotal(w)):'—'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
       </tr>`;
@@ -4089,7 +4143,7 @@ function printWageStatement() {
     const rows = gw.map(w => {
       const mDates = (w.dates||[]).filter(d => { const p=parsD(d); return p.y===wageStmtY&&p.m===wageStmtM; });
       const u = Number(w.unit||1);
-      const mAmt = mDates.length * netWage(w) * u;
+      const mAmt = mDates.length * netWage(w) * u + expenseTotal(w);
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -4099,6 +4153,7 @@ function printWageStatement() {
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${u !== 1 ? u + '품' : '1품'}</td>
+        <td class="td-num">${expenseTotal(w)>0?fmtW(expenseTotal(w)):'—'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
       </tr>`;
@@ -4118,6 +4173,7 @@ function printWageStatement() {
         : `<table><thead><tr>
             <th>현장명</th><th>작업 기간</th>
             <th style="text-align:right">일당</th><th style="text-align:right">품수</th>
+            <th style="text-align:right">경비</th>
             <th style="text-align:right">이번 달 금액</th><th style="text-align:center">정산</th>
           </tr></thead><tbody>${s.rows}</tbody></table>
           <div class="member-total">이번 달 합계 <strong>${fmtW(s.mTotal)}</strong></div>`
@@ -4265,7 +4321,10 @@ function renderTaxEstFields() {
   if (isLeaderMode) {
     const laborCost = DB.works.filter(w=>!w.isPersonal && w.wage!=null && getWorkStatus(w)!=='planned').reduce((s,w)=>{
       const cnt=(w.dates||[]).filter(d=>parsD(d).y===y).length;
-      return s + cnt*Number(w.wage)*Number(w.unit||1);
+      if (cnt === 0) return s;
+      // 경비(식대·자재비 등)는 팀원한테 대신 지급한 실비라 팀장 입장에선 이것도 비용 —
+      // 일당과 합쳐서 계산해야 순이익이 정확해짐
+      return s + cnt*Number(w.wage)*Number(w.unit||1) + expenseTotal(w);
     },0);
     fields.innerHTML = `
       <div class="fg">
@@ -4274,7 +4333,7 @@ function renderTaxEstFields() {
         <div style="font-size:11px;color:var(--muted);margin-top:4px">앱에 없는 정보라 직접 입력해주세요</div>
       </div>
       <div class="fg">
-        <label>${y}년 인건비 지출 (자동)</label>
+        <label>${y}년 인건비+경비 지출 (자동)</label>
         <div style="font-size:16px;font-weight:700;padding:10px 0;color:var(--text)">${fmtW(laborCost)}</div>
       </div>
       <div class="fg">
