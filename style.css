@@ -334,6 +334,12 @@
       padding:5px 10px 5px 12px; font-size:13px; color:var(--dark); font-weight:600;
     }
     .dchip button { background:none; border:none; color:var(--pri); font-size:16px; cursor:pointer; padding:0; line-height:1; }
+    .dchip-unit {
+      -webkit-appearance:none; appearance:none;
+      background:none; border:none; color:var(--muted);
+      font-size:16px; font-weight:600; padding:0; width:52px; cursor:pointer;
+    }
+    .dchip-unit.overridden { color:var(--pri); font-weight:800; }
     .add-date-btn {
       background:none; border:1.5px dashed var(--border);
       border-radius:20px; padding:6px 16px;

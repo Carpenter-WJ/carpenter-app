@@ -455,7 +455,7 @@
     </div>
     <div class="fg" id="unitFg">
       <label>품수</label>
-      <select id="inUnit">
+      <select id="inUnit" onchange="renderDateChips()">
         <option value="0.5">0.5품 — 반나절</option>
         <option value="1" selected>1품 — 하루</option>
         <option value="1.5">1.5품</option>
@@ -527,6 +527,7 @@
     </div>
     <div class="fg">
       <label id="dateLabel">일한 날짜</label>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 6px">날짜별로 품수가 다르면 옆의 품수를 눌러 바꿀 수 있어요</div>
       <div class="date-chips" id="dateChips"></div>
       <button class="add-date-btn" onclick="openDatePickOv()">+ 날짜 추가</button>
     </div>
