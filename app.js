@@ -2218,12 +2218,15 @@ function renderDateChips() {
   document.getElementById('dateChips').innerHTML=sorted.map(d=>{
     const overridden=editUnitOverrides[d]!=null;
     const cur=overridden?Number(editUnitOverrides[d]):base;
+    const unitColor=overridden?c.border:'var(--muted)';
     return `
     <div class="dchip" style="background:${c.bg};border-color:${c.border}">
       <span style="color:${c.border}">${fmtDate(d)}</span>
-      <select class="dchip-unit${overridden?' overridden':''}" style="${overridden?`color:${c.border}`:''}" onchange="setDateUnit('${d}',this.value)">
-        ${UNIT_OPTIONS.map(u=>`<option value="${u}"${cur===u?' selected':''}>${u}품</option>`).join('')}
-      </select>
+      <span class="dchip-unit-box" style="color:${unitColor};font-weight:${overridden?800:600}">${cur}품<span class="dchip-caret"></span>
+        <select class="dchip-unit" onchange="setDateUnit('${d}',this.value)">
+          ${UNIT_OPTIONS.map(u=>`<option value="${u}"${cur===u?' selected':''}>${u}품</option>`).join('')}
+        </select>
+      </span>
       <button onclick="removeDate('${d}')" style="color:${c.border}">✕</button>
     </div>`;
   }).join('');
