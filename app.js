@@ -436,7 +436,7 @@ function renderColorChips() {
     `<div class="cchip${editColor===c.id?' on':''}" style="background:${c.border}" onclick="selectColor('${c.id}')"></div>`
   ).join('');
 }
-function selectColor(id) { editColor=id; renderColorChips(); }
+function selectColor(id) { editColor=id; renderColorChips(); renderDateChips(); }
 
 async function editDisplayName() {
   const newName = prompt('이름(닉네임)을 입력해주세요', userDisplayName);
@@ -2214,16 +2214,17 @@ function setRecordType(type) {
 function renderDateChips() {
   const sorted=[...editDates].sort();
   const base=Number(document.getElementById('inUnit').value||1);
+  const c=getColor(editColor);
   document.getElementById('dateChips').innerHTML=sorted.map(d=>{
     const overridden=editUnitOverrides[d]!=null;
     const cur=overridden?Number(editUnitOverrides[d]):base;
     return `
-    <div class="dchip">
-      <span>${fmtDate(d)}</span>
-      <select class="dchip-unit${overridden?' overridden':''}" onchange="setDateUnit('${d}',this.value)">
+    <div class="dchip" style="background:${c.bg};border-color:${c.border}">
+      <span style="color:${c.border}">${fmtDate(d)}</span>
+      <select class="dchip-unit${overridden?' overridden':''}" style="${overridden?`color:${c.border}`:''}" onchange="setDateUnit('${d}',this.value)">
         ${UNIT_OPTIONS.map(u=>`<option value="${u}"${cur===u?' selected':''}>${u}품</option>`).join('')}
       </select>
-      <button onclick="removeDate('${d}')">✕</button>
+      <button onclick="removeDate('${d}')" style="color:${c.border}">✕</button>
     </div>`;
   }).join('');
   const lbl=document.getElementById('dateLabel');
