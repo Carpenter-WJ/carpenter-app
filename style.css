@@ -331,14 +331,17 @@
     .dchip {
       display:inline-flex; align-items:center; gap:6px;
       background:var(--chip-bg); border:1px solid var(--pri); border-radius:20px;
-      padding:5px 10px 5px 12px; font-size:13px; color:var(--dark); font-weight:600;
+      padding:5px 10px 5px 12px; font-size:16px; color:var(--dark); font-weight:600;
     }
     .dchip button { background:none; border:none; color:var(--pri); font-size:16px; cursor:pointer; padding:0; line-height:1; }
     .dchip .dchip-unit {
       -webkit-appearance:none; appearance:none;
-      background:none; border:none; border-radius:0; color:var(--muted);
+      background:none
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 12 8'%3E%3Cpath fill='%238E8E93' d='M1 1l5 5 5-5'/%3E%3C/svg%3E")
+        no-repeat right center;
+      border:none; border-radius:0; color:var(--muted);
       font-size:16px; font-family:inherit; font-weight:600;
-      width:auto; min-width:0; max-width:none; padding:0; margin:0; cursor:pointer;
+      width:auto; min-width:0; max-width:none; padding:0 14px 0 0; margin:0; cursor:pointer;
     }
     .dchip .dchip-unit.overridden { color:var(--pri); font-weight:800; }
     .add-date-btn {
