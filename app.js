@@ -1599,6 +1599,17 @@ function dateUnit(w, d) { return Number((w.unitOverrides && w.unitOverrides[d] !
 function sumUnits(w, dates) { return (dates||[]).reduce((s,d)=>s+dateUnit(w,d), 0); }
 function expAmt(w) { return w.wage==null ? null : sumUnits(w, w.dates) * netWage(w) + expenseTotal(w); }
 function rcvAmt(wId) { return DB.payments.filter(p=>p.workId===wId).reduce((s,p)=>s+Number(p.amount),0); }
+function firstDateOf(w) { return (w.dates||[]).slice().sort()[0] || ''; }
+// 경비/미수금처럼 날짜별로 못 쪼개는(전체 작업 단위) 금액을 월별 합계에 더할 때,
+// 여러 달에 걸친 현장이 걸리는 달마다 매번 중복으로 더해지지 않도록 딱 한 달(첫 작업일이
+// 속한 달)에서만 세도록 판정하는 헬퍼. 목록 표시 자체는 이 함수와 무관하게 걸리는 모든
+// 달에 그대로 보여줘야 "일당은 나오는데 카드는 안 보이는" 모순이 안 생김(정산탭 참고).
+function isSettlementMonth(w, y, m) {
+  const first = firstDateOf(w);
+  if (!first) return false;
+  const p = parsD(first);
+  return p.y === y && p.m === m;
+}
 
 function formatDatesShort(dates) {
   if(!dates||dates.length===0) return '';
@@ -3196,28 +3207,28 @@ function renderPay() {
   const periodLabel=payViewMode==='site'?'전체':'이달';
   const lastDate=w=>(w.dates||[]).slice().sort().slice(-1)[0]||'';
 
-  let scopeWorks, mWage, noActivity;
+  let scopeWorks, mWage;
   if (payViewMode==='site') {
     scopeWorks=allActiveWorks;
     mWage=scopeWorks.reduce((s,w)=>s+sumUnits(w,w.dates)*netWage(w),0);
-    noActivity=scopeWorks.length===0;
   } else {
-    // 일당은 실제 날짜 기준으로 이 달 몫만 정확히 집계(현장이 여러 달에 걸쳐도 정확함)
-    const wageWorks=allActiveWorks.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
-    mWage=wageWorks.reduce((s,w)=>{
+    // 목록에는 이 달에 걸리는 날짜가 하나라도 있으면 그대로 보여줌(기존 방식 유지) —
+    // 그래야 "이달 총 일당은 있는데 카드가 안 보이는" 모순이 안 생김
+    scopeWorks=allActiveWorks.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
+    // 일당만 실제 날짜 기준으로 이 달 몫을 정확히 집계(현장이 여러 달에 걸쳐도 정확함)
+    mWage=scopeWorks.reduce((s,w)=>{
       const matched=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;});
       return s+sumUnits(w,matched)*netWage(w);
     },0);
-    noActivity=wageWorks.length===0;
-    // 카드 목록/경비/미수금은 "마지막 작업일이 속한 달"에만 한 번 귀속시켜서
-    // 여러 달에 걸친 현장이 매 달 화면마다 중복으로(미수금까지 부풀려서) 잡히는 걸 방지함
-    scopeWorks=allActiveWorks.filter(w=>{
-      const last=lastDate(w); if(!last) return false;
-      const p=parsD(last); return p.y===payY && p.m===payM;
-    });
   }
-  const mExpense=scopeWorks.reduce((s,w)=>s+expenseTotal(w),0);
-  const mUnpaid=scopeWorks.filter(w=>!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+  const noActivity=scopeWorks.length===0;
+  // 경비/미수금은 날짜별로 못 쪼개는 값이라, 여러 달에 걸친 현장이 걸리는 달마다
+  // 중복으로 더해지지 않게 "첫 작업일이 속한 달"에서만 한 번 합산에 포함시킴
+  // (카드 자체는 위 scopeWorks 기준으로 걸리는 모든 달에 그대로 보임 — 표시 안 되던
+  // 이전 버그 재발 방지, 합계만 중복 안 되게 조정하는 것)
+  const inSettlementScope=w=>payViewMode==='site'||isSettlementMonth(w,payY,payM);
+  const mExpense=scopeWorks.filter(inSettlementScope).reduce((s,w)=>s+expenseTotal(w),0);
+  const mUnpaid=scopeWorks.filter(w=>!w.isPaid&&inSettlementScope(w)).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
 
   const isLeaderPay = dataMode==='team' && teamRole==='leader' && scopeWorks.some(w=>!w.isPersonal);
   document.getElementById('balArea').innerHTML=`
@@ -3243,7 +3254,10 @@ function renderPay() {
     .filter(w=>payFilter==='all'?true:payFilter==='done'?w.isPaid:!w.isPaid)
     .sort((a,b)=>{
       if(a.isPaid!==b.isPaid) return a.isPaid?1:-1;
-      return payViewMode==='site' ? lastDate(a).localeCompare(lastDate(b)) : 0; // 현장별: 오래 미정산된 것부터
+      if(payViewMode!=='site') return 0;
+      // 현장별: 오래 미정산된 것부터. 날짜가 없는 경우는 맨 뒤로(가장 최근인 것처럼 앞에 오면 안 됨)
+      const la=lastDate(a)||'9999-99-99', lb=lastDate(b)||'9999-99-99';
+      return la<lb?-1:la>lb?1:0;
     });
 
   if(filtered.length===0){
@@ -3859,11 +3873,13 @@ function renderStat() {
     mWage+=u*netWage(w);
     mWageBase+=matched.length*netWage(w); // 품수 제외 — 순수 일당 기준
     sUnit+=u;
-    mExpense+=expenseTotal(w);
+    // 경비는 날짜별로 못 쪼개는 값이라 여러 달에 걸친 현장이면 첫 작업일이 속한
+    // 달에서만 한 번 더함(안 그러면 걸리는 달마다 중복으로 더해짐)
+    if (isSettlementMonth(w,statY,statM)) mExpense+=expenseTotal(w);
   });
   const workDays=new Set(works.flatMap(w=>(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===statY&&p.m===statM;}))).size;
   const mPaid=DB.payments.filter(p=>{const d=parsD(p.date);return d.y===statY&&d.m===statM;}).reduce((s,p)=>s+Number(p.amount),0);
-  const mOutstanding=works.reduce((s,w)=>w.wage==null||w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+  const mOutstanding=works.reduce((s,w)=>w.wage==null||w.isPaid||!isSettlementMonth(w,statY,statM)?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
   const allOutstanding=statBase.filter(w=>getWorkStatus(w)!=='planned').reduce((s,w)=>w.isPaid?s:s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
   const avgWage=workDays>0?Math.round(mWageBase/workDays):0;
   const sUnitStr=sUnit%1===0?sUnit:sUnit.toFixed(1);
@@ -4081,7 +4097,10 @@ function _buildWageCard(name, roleLabel, isLeaderRole, works) {
     const totalU = dUnits.reduce((a,b)=>a+b,0);
     const uniformU = dUnits.length>0 && dUnits.every(x=>x===dUnits[0]) ? dUnits[0] : null;
     const unitLabel = uniformU!=null ? (uniformU!==1 ? ' · '+uniformU+'품' : '') : ' · 총 '+totalU+'품';
-    const mAmt = totalU * netWage(w) + expenseTotal(w);
+    // 경비는 날짜별로 못 쪼개는 값이라, 여러 달에 걸친 현장이면 첫 작업일이 속한
+    // 달의 명세서에서만 한 번 포함시킴(안 그러면 걸리는 달마다 중복으로 들어감)
+    const expForThisStmt = isSettlementMonth(w,wageStmtY,wageStmtM) ? expenseTotal(w) : 0;
+    const mAmt = totalU * netWage(w) + expForThisStmt;
     monthTotal += mAmt;
     const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
     const badge = w.isPaid
@@ -4092,7 +4111,7 @@ function _buildWageCard(name, roleLabel, isLeaderRole, works) {
     return `<div style="display:flex;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--text)">${escapeHtml(w.site)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(netWage(w))}${unitLabel}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}${expenseTotal(w)>0?' · 경비 '+fmtW(expenseTotal(w)):''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${mDates.length}일 · 일당 ${fmtW(netWage(w))}${unitLabel}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}${expForThisStmt>0?' · 경비 '+fmtW(expForThisStmt):''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0;margin-left:12px">
         <div style="font-size:13px;font-weight:700;color:var(--fg)">${fmtW(mAmt)}</div>
@@ -4189,7 +4208,9 @@ function printWageStatement() {
       const totalU = dUnits.reduce((a,b)=>a+b,0);
       const uniformU = dUnits.length>0 && dUnits.every(x=>x===dUnits[0]) ? dUnits[0] : null;
       const unitLabel = uniformU!=null ? (uniformU!==1?uniformU+'품':'1품') : `총 ${totalU}품`;
-      const mAmt = totalU * netWage(w) + expenseTotal(w);
+      // 경비는 여러 달 걸친 현장이면 첫 작업일이 속한 달 명세서에서만 한 번 포함(중복 방지)
+      const expForThisStmt = isSettlementMonth(w,wageStmtY,wageStmtM) ? expenseTotal(w) : 0;
+      const mAmt = totalU * netWage(w) + expForThisStmt;
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -4199,7 +4220,7 @@ function printWageStatement() {
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${unitLabel}</td>
-        <td class="td-num">${expenseTotal(w)>0?fmtW(expenseTotal(w)):'—'}</td>
+        <td class="td-num">${expForThisStmt>0?fmtW(expForThisStmt):'—'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
       </tr>`;
@@ -4223,7 +4244,9 @@ function printWageStatement() {
       const totalU = dUnits.reduce((a,b)=>a+b,0);
       const uniformU = dUnits.length>0 && dUnits.every(x=>x===dUnits[0]) ? dUnits[0] : null;
       const unitLabel = uniformU!=null ? (uniformU!==1?uniformU+'품':'1품') : `총 ${totalU}품`;
-      const mAmt = totalU * netWage(w) + expenseTotal(w);
+      // 경비는 여러 달 걸친 현장이면 첫 작업일이 속한 달 명세서에서만 한 번 포함(중복 방지)
+      const expForThisStmt = isSettlementMonth(w,wageStmtY,wageStmtM) ? expenseTotal(w) : 0;
+      const mAmt = totalU * netWage(w) + expForThisStmt;
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -4233,7 +4256,7 @@ function printWageStatement() {
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${unitLabel}</td>
-        <td class="td-num">${expenseTotal(w)>0?fmtW(expenseTotal(w)):'—'}</td>
+        <td class="td-num">${expForThisStmt>0?fmtW(expForThisStmt):'—'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
       </tr>`;
@@ -4254,7 +4277,9 @@ function printWageStatement() {
       const totalU = dUnits.reduce((a,b)=>a+b,0);
       const uniformU = dUnits.length>0 && dUnits.every(x=>x===dUnits[0]) ? dUnits[0] : null;
       const unitLabel = uniformU!=null ? (uniformU!==1?uniformU+'품':'1품') : `총 ${totalU}품`;
-      const mAmt = totalU * netWage(w) + expenseTotal(w);
+      // 경비는 여러 달 걸친 현장이면 첫 작업일이 속한 달 명세서에서만 한 번 포함(중복 방지)
+      const expForThisStmt = isSettlementMonth(w,wageStmtY,wageStmtM) ? expenseTotal(w) : 0;
+      const mAmt = totalU * netWage(w) + expForThisStmt;
       mTotal += mAmt;
       const fullUnpaid = Math.max(0, expAmt(w) - rcvAmt(w.id));
       const statusLabel = w.isPaid ? '완납' : fullUnpaid > 0 ? '미지급' : '대기';
@@ -4264,7 +4289,7 @@ function printWageStatement() {
         <td class="td-sub">${formatDatesShort(mDates)}</td>
         <td class="td-num">${fmtW(netWage(w))}${w.taxWithheld?'<span class="tax-tag">3.3%</span>':''}</td>
         <td class="td-num">${unitLabel}</td>
-        <td class="td-num">${expenseTotal(w)>0?fmtW(expenseTotal(w)):'—'}</td>
+        <td class="td-num">${expForThisStmt>0?fmtW(expForThisStmt):'—'}</td>
         <td class="td-num td-bold">${fmtW(mAmt)}</td>
         <td class="td-center"><span class="badge s-${statusCls}">${statusLabel}</span></td>
       </tr>`;
