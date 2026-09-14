@@ -68,7 +68,7 @@ let calendarFeedToken = null; // 캘린더 구독(webcal) 링크용 토큰
 let photoUsageThisMonth = 0; // 이번 달 작업 사진 업로드 횟수 (무료 월 5장)
 const FREE_PHOTO_LIMIT = 5;
 let workY = TODAY.getFullYear(), workM = TODAY.getMonth();
-let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all';
+let payY = TODAY.getFullYear(), payM = TODAY.getMonth(), payFilter = 'all', payViewMode = 'month';
 let wageStmtY = TODAY.getFullYear(), wageStmtM = TODAY.getMonth();
 let workSearch = '';
 let showWeekSum = localStorage.getItem('showWeekSum') !== 'false';
@@ -83,6 +83,7 @@ const EXPENSE_CATEGORIES = ['식대','철물비','자재비','유류비','숙박
 const UNIT_OPTIONS = [0.5,1,1.5,2,2.5,3,3.5,4,4.5,5];
 function movePay(d) { payM+=d; if(payM>11){payM=0;payY++;} if(payM<0){payM=11;payY--;} renderPay(); }
 function setPayFilter(f) { payFilter=f; renderPay(); }
+function setPayViewMode(mode) { payViewMode=mode; renderPay(); }
 
 function toggleInfoSection(force) {
   const body=document.getElementById('infoBody');
@@ -3187,37 +3188,63 @@ function renderWorkRow(w,y,m,standalone) {
 
 // ── 입금 탭 ──
 function renderPay() {
+  document.getElementById('payViewToggle').innerHTML=`<div style="display:flex;gap:6px;margin-bottom:8px">${[['month','월별'],['site','현장별']].map(([v,l])=>`<button onclick="setPayViewMode('${v}')" style="background:${payViewMode===v?'var(--pri)':'none'};color:${payViewMode===v?'#fff':'var(--muted)'};border:1.5px solid ${payViewMode===v?'var(--pri)':'var(--border)'};border-radius:20px;font-size:12px;font-weight:700;padding:5px 14px;cursor:pointer">${l}</button>`).join('')}</div>`;
+  document.getElementById('payMonthNav').style.display=payViewMode==='month'?'flex':'none';
   document.getElementById('payLbl').textContent=`${payY}년 ${payM+1}월`;
 
-  const monthWorks=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned'&&(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
-  const mWage=monthWorks.reduce((s,w)=>{
-    const matched=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;});
-    return s+sumUnits(w,matched)*netWage(w);
-  },0);
-  const mExpense=monthWorks.reduce((s,w)=>s+expenseTotal(w),0);
-  const mUnpaid=monthWorks.filter(w=>!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+  const allActiveWorks=DB.works.filter(w=>w.wage!=null&&getWorkStatus(w)!=='planned');
+  const periodLabel=payViewMode==='site'?'전체':'이달';
+  const lastDate=w=>(w.dates||[]).slice().sort().slice(-1)[0]||'';
 
-  const isLeaderPay = dataMode==='team' && teamRole==='leader' && monthWorks.some(w=>!w.isPersonal);
+  let scopeWorks, mWage, noActivity;
+  if (payViewMode==='site') {
+    scopeWorks=allActiveWorks;
+    mWage=scopeWorks.reduce((s,w)=>s+sumUnits(w,w.dates)*netWage(w),0);
+    noActivity=scopeWorks.length===0;
+  } else {
+    // 일당은 실제 날짜 기준으로 이 달 몫만 정확히 집계(현장이 여러 달에 걸쳐도 정확함)
+    const wageWorks=allActiveWorks.filter(w=>(w.dates||[]).some(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;}));
+    mWage=wageWorks.reduce((s,w)=>{
+      const matched=(w.dates||[]).filter(d=>{const p=parsD(d);return p.y===payY&&p.m===payM;});
+      return s+sumUnits(w,matched)*netWage(w);
+    },0);
+    noActivity=wageWorks.length===0;
+    // 카드 목록/경비/미수금은 "마지막 작업일이 속한 달"에만 한 번 귀속시켜서
+    // 여러 달에 걸친 현장이 매 달 화면마다 중복으로(미수금까지 부풀려서) 잡히는 걸 방지함
+    scopeWorks=allActiveWorks.filter(w=>{
+      const last=lastDate(w); if(!last) return false;
+      const p=parsD(last); return p.y===payY && p.m===payM;
+    });
+  }
+  const mExpense=scopeWorks.reduce((s,w)=>s+expenseTotal(w),0);
+  const mUnpaid=scopeWorks.filter(w=>!w.isPaid).reduce((s,w)=>s+Math.max(0,expAmt(w)-rcvAmt(w.id)),0);
+
+  const isLeaderPay = dataMode==='team' && teamRole==='leader' && scopeWorks.some(w=>!w.isPersonal);
   document.getElementById('balArea').innerHTML=`
     <div class="bal-card">
       <div class="bc-row">
-        <div class="bc-item"><div class="bi-l">${isLeaderPay?'이달 총 인건비':'이달 총 일당'}</div><div class="bi-v">${fmtW(mWage)}</div></div>
-        ${mExpense>0?`<div class="bc-item"><div class="bi-l">이달 경비</div><div class="bi-v">${fmtW(mExpense)}</div></div>`:''}
-        <div class="bc-item"><div class="bi-l">${isLeaderPay?'이달 미지급금':'이달 미수금'}</div><div class="bi-v" style="color:${mUnpaid>0?'var(--red)':'var(--muted)'}">${fmtW(mUnpaid)}</div></div>
+        <div class="bc-item"><div class="bi-l">${isLeaderPay?periodLabel+' 총 인건비':periodLabel+' 총 일당'}</div><div class="bi-v">${fmtW(mWage)}</div></div>
+        ${mExpense>0?`<div class="bc-item"><div class="bi-l">${periodLabel} 경비</div><div class="bi-v">${fmtW(mExpense)}</div></div>`:''}
+        <div class="bc-item"><div class="bi-l">${isLeaderPay?periodLabel+' 미지급금':periodLabel+' 미수금'}</div><div class="bi-v" style="color:${mUnpaid>0?'var(--red)':'var(--muted)'}">${fmtW(mUnpaid)}</div></div>
       </div>
     </div>`;
 
   document.getElementById('payFilterWrap').innerHTML=`<div style="display:flex;gap:6px">${[['all','전체'],['unpaid',isLeaderPay?'미지급':'미수금'],['done','완료']].map(([v,l])=>`<button onclick="setPayFilter('${v}')" style="background:${payFilter===v?'var(--pri)':'none'};color:${payFilter===v?'#fff':'var(--muted)'};border:1.5px solid ${payFilter===v?'var(--pri)':'var(--border)'};border-radius:20px;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer">${l}</button>`).join('')}</div>`;
 
   const el=document.getElementById('pList');
-  if(monthWorks.length===0){
-    el.innerHTML='<div class="es"><div class="es-icon">🧾</div><div class="es-title">이달 현장이 없어요</div><div class="es-desc">현장 탭에서 현장을 추가하면<br>여기서 정산을 관리할 수 있어요</div></div>';
+  if(noActivity){
+    el.innerHTML=payViewMode==='site'
+      ?'<div class="es"><div class="es-icon">🧾</div><div class="es-title">등록된 현장이 없어요</div><div class="es-desc">현장 탭에서 현장을 추가하면<br>여기서 정산을 관리할 수 있어요</div></div>'
+      :'<div class="es"><div class="es-icon">🧾</div><div class="es-title">이달 현장이 없어요</div><div class="es-desc">현장 탭에서 현장을 추가하면<br>여기서 정산을 관리할 수 있어요</div></div>';
     return;
   }
 
-  const filtered=monthWorks
+  const filtered=scopeWorks
     .filter(w=>payFilter==='all'?true:payFilter==='done'?w.isPaid:!w.isPaid)
-    .sort((a,b)=>a.isPaid===b.isPaid?0:a.isPaid?1:-1);
+    .sort((a,b)=>{
+      if(a.isPaid!==b.isPaid) return a.isPaid?1:-1;
+      return payViewMode==='site' ? lastDate(a).localeCompare(lastDate(b)) : 0; // 현장별: 오래 미정산된 것부터
+    });
 
   if(filtered.length===0){
     el.innerHTML=`<div class="es" style="padding:32px 24px"><div class="es-title" style="font-size:15px">${payFilter==='done'?'완료된 현장이 없어요':(isLeaderPay?'미지급금이 없어요 🎉':'미수금이 없어요 🎉')}</div></div>`;
