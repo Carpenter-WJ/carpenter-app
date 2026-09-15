@@ -4923,6 +4923,7 @@ auth.onAuthStateChanged(user => {
     localStorage.removeItem('moksujilji2'); // 기기 공용 캐시라 다음 로그인 계정과 섞이지 않도록 정리
     dataMode = 'personal'; activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     loginScreen.style.display = 'flex';
+    loginScreen.classList.add('ready'); // 로그인 여부 확인이 끝난 뒤에만 로그인 버튼 노출(초기 깜빡임 방지)
   }
 });
 
