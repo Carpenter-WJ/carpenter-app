@@ -4875,17 +4875,23 @@ async function refreshFromCloud() {
   setTimeout(()=>{ ind.style.opacity='0'; ind.textContent='당겨서 새로고침'; },800);
 }
 
+const TAB_MOVE_FNS = {cal:moveM, work:moveWork, pay:movePay, stat:moveStat};
+
 function initPTR() {
   const ind=document.getElementById('ptrInd');
-  let startY=0, pulling=false;
+  let startX=0, startY=0, pulling=false, axis=null;
   document.addEventListener('touchstart',e=>{
     if(document.querySelector('.ov.show')) return;
+    startX=e.touches[0].clientX;
     if(window.scrollY===0) startY=e.touches[0].clientY;
+    axis=null;
   },{passive:true});
   document.addEventListener('touchmove',e=>{
-    if(!startY||document.querySelector('.ov.show')) return;
-    const dy=e.touches[0].clientY-startY;
-    if(dy>0){
+    if((!startX&&!startY)||document.querySelector('.ov.show')) return;
+    const dx=e.touches[0].clientX-startX;
+    const dy=startY?e.touches[0].clientY-startY:0;
+    if(!axis && (Math.abs(dx)>10||Math.abs(dy)>10)) axis=Math.abs(dx)>Math.abs(dy)?'h':'v';
+    if(axis==='v' && startY && dy>0){
       pulling=true;
       const pct=Math.min(dy/80,1);
       ind.style.opacity=String(pct);
@@ -4893,11 +4899,16 @@ function initPTR() {
     }
   },{passive:true});
   document.addEventListener('touchend',async e=>{
-    if(!startY||!pulling){startY=0;return;}
-    const dy=e.changedTouches[0].clientY-startY;
-    startY=0; pulling=false;
-    if(dy>80){ await refreshFromCloud(); }
-    else { ind.style.opacity='0'; ind.textContent='당겨서 새로고침'; }
+    if(axis==='h'){
+      const dx=e.changedTouches[0].clientX-startX;
+      const fn=TAB_MOVE_FNS[curTab];
+      if(fn && Math.abs(dx)>60) fn(dx<0?1:-1);
+    } else if(startY && pulling){
+      const dy=e.changedTouches[0].clientY-startY;
+      if(dy>80){ await refreshFromCloud(); }
+      else { ind.style.opacity='0'; ind.textContent='당겨서 새로고침'; }
+    }
+    startX=0; startY=0; pulling=false; axis=null;
   });
 }
 
