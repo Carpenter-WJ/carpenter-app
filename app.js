@@ -4898,6 +4898,8 @@ function initPTR() {
   function buildGhost(dir) {
     const root=document.getElementById(TAB_SWIPE_ROOTS[curTab]);
     if(!root) return null;
+    // 이전 제스처가 touchcancel 등으로 비정상 종료돼 고스트가 안 지워진 채 남아있을 수 있으므로 방어적으로 먼저 정리
+    root.querySelectorAll(':scope > .swipe-ghost-pane').forEach(p=>p.remove());
     const width=root.getBoundingClientRect().width||window.innerWidth;
     const outgoingHTML=root.innerHTML;
     const fn=TAB_MOVE_FNS[curTab];
@@ -4971,6 +4973,13 @@ function initPTR() {
     }
     startX=0; startY=0; pulling=false; axis=null;
   });
+  // 시스템 제스처 등으로 터치가 비정상 종료되는 경우(touchend 없이) 고스트가 화면에
+  // 영원히 남는 것을 방지 — 애니메이션 없이 즉시 정리
+  document.addEventListener('touchcancel',()=>{
+    destroyGhost();
+    ind.style.opacity='0'; ind.textContent='당겨서 새로고침';
+    startX=0; startY=0; pulling=false; axis=null;
+  },{passive:true});
 }
 
 auth.onAuthStateChanged(user => {
