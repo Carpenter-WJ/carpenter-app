@@ -4889,11 +4889,40 @@ function swipeNavAllowed(dir) {
 
 function initPTR() {
   const ind=document.getElementById('ptrInd');
-  let startX=0, startY=0, pulling=false, axis=null, ghost=null;
+  let startX=0, startY=0, pulling=false, axis=null, ghost=null, busy=false, watchdog=null;
 
   function destroyGhost() {
     if(!ghost) return;
     ghost.outgoing.remove(); ghost.incoming.remove(); ghost=null;
+  }
+  function armWatchdog() {
+    // 실기기에서 시스템 제스처 충돌 등으로 touchmove가 끊긴 뒤 touchend/touchcancel이
+    // 영영 안 오는 경우가 있음(안드로이드 입력 파이프라인에서 조용히 드롭됨) — 마지막
+    // 움직임 이후 일정 시간 응답이 없으면 취소로 간주해 자동 정리(무한 멈춤 방지)
+    clearTimeout(watchdog);
+    watchdog=setTimeout(()=>{
+      if(ghost) resolveGesture(0);
+      startX=0; startY=0; pulling=false; axis=null;
+    },500);
+  }
+  function resolveGesture(dx) {
+    clearTimeout(watchdog);
+    if(!ghost) return;
+    const {outgoing,incoming,width,dir}=ghost;
+    const tab=curTab; // 애니메이션 도중 탭을 바꿔도 원래 탭의 이동함수가 불리도록 고정
+    const commit=Math.abs(dx)>60;
+    busy=true;
+    outgoing.style.transition=incoming.style.transition='transform 200ms ease-out';
+    requestAnimationFrame(()=>{
+      outgoing.style.transform=`translateX(${commit?(dir>0?-width:width):0}px)`;
+      incoming.style.transform=`translateX(${commit?0:(dir>0?width:-width)}px)`;
+    });
+    setTimeout(()=>{
+      if(commit) TAB_MOVE_FNS[tab](dir);
+      outgoing.remove(); incoming.remove();
+      busy=false;
+    },210);
+    ghost=null;
   }
   function buildGhost(dir) {
     const root=document.getElementById(TAB_SWIPE_ROOTS[curTab]);
@@ -4930,7 +4959,15 @@ function initPTR() {
     if((!startX&&!startY)||document.querySelector('.ov.show')) return;
     const dx=e.touches[0].clientX-startX;
     const dy=startY?e.touches[0].clientY-startY:0;
-    if(!axis && (Math.abs(dx)>10||Math.abs(dy)>10)) axis=Math.abs(dx)>Math.abs(dy)?'h':'v';
+    const adx=Math.abs(dx), ady=Math.abs(dy);
+    // 실제 손가락은 완전히 수평/수직으로만 움직이지 않고 초반에 살짝 대각선으로
+    // 흔들리는 경우가 많음 — 수직(당겨서 새로고침)은 수평보다 뚜렷하게 우세할 때만
+    // 확정하고, 그 전까지는 계속 판정을 미뤄서 애매한 대각선 시작에 스와이프
+    // 전체가 무시되는 걸 방지
+    if(!axis){
+      if(adx>=10 && adx>=ady) axis='h';
+      else if(ady>14 && ady>adx*1.3) axis='v';
+    }
     if(axis==='v' && startY && dy>0){
       pulling=true;
       const pct=Math.min(dy/80,1);
@@ -4939,11 +4976,12 @@ function initPTR() {
     } else if(axis==='h'){
       const dir=dx<0?1:-1;
       if(ghost && ghost.dir!==dir) destroyGhost();
-      if(!ghost && swipeNavAllowed(dir)) ghost=buildGhost(dir);
+      if(!ghost && !busy && swipeNavAllowed(dir)) ghost=buildGhost(dir);
       if(ghost){
         ghost.outgoing.style.transform=`translateX(${dx}px)`;
         const incomingBase=ghost.dir>0?ghost.width:-ghost.width;
         ghost.incoming.style.transform=`translateX(${incomingBase+dx}px)`;
+        armWatchdog();
       }
     }
   },{passive:true});
@@ -4951,18 +4989,7 @@ function initPTR() {
     if(axis==='h'){
       const dx=e.changedTouches[0].clientX-startX;
       if(ghost){
-        const {outgoing,incoming,width,dir}=ghost;
-        const commit=Math.abs(dx)>60;
-        outgoing.style.transition=incoming.style.transition='transform 200ms ease-out';
-        requestAnimationFrame(()=>{
-          outgoing.style.transform=`translateX(${commit?(dir>0?-width:width):0}px)`;
-          incoming.style.transform=`translateX(${commit?0:(dir>0?width:-width)}px)`;
-        });
-        setTimeout(()=>{
-          if(commit) TAB_MOVE_FNS[curTab](dir);
-          outgoing.remove(); incoming.remove();
-        },210);
-        ghost=null;
+        resolveGesture(dx);
       } else if(Math.abs(dx)>60 && TAB_MOVE_FNS[curTab]) {
         TAB_MOVE_FNS[curTab](dx<0?1:-1);
       }
@@ -4971,11 +4998,13 @@ function initPTR() {
       if(dy>80){ await refreshFromCloud(); }
       else { ind.style.opacity='0'; ind.textContent='당겨서 새로고침'; }
     }
+    clearTimeout(watchdog);
     startX=0; startY=0; pulling=false; axis=null;
   });
   // 시스템 제스처 등으로 터치가 비정상 종료되는 경우(touchend 없이) 고스트가 화면에
   // 영원히 남는 것을 방지 — 애니메이션 없이 즉시 정리
   document.addEventListener('touchcancel',()=>{
+    clearTimeout(watchdog);
     destroyGhost();
     ind.style.opacity='0'; ind.textContent='당겨서 새로고침';
     startX=0; startY=0; pulling=false; axis=null;
