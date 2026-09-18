@@ -4932,9 +4932,22 @@ function initPTR() {
     const width=root.getBoundingClientRect().width||window.innerWidth;
     const outgoingHTML=root.innerHTML;
     const fn=TAB_MOVE_FNS[curTab];
+    // 다음/이전 달 미리보기를 만들려고 fn()을 실제 라이브 DOM(root) 위에서 바로
+    // 호출하면, 지금 터치가 시작된 바로 그 엘리먼트(예: 날짜 칸이나 현장 바)가
+    // innerHTML 교체로 통째로 사라져(detach) 버림 — 그러면 브라우저가 그 터치
+    // 시퀀스의 나머지 touchmove/touchend를 조용히 끊어버려서, 드래그가 중간에
+    // 멈춘 채 이전 화면이 잔상처럼 남는 것처럼 보이는 문제가 있었음(실기기
+    // 재현으로 확인됨). 그래서 실제 렌더링은 화면 밖 스크래치 사본에서
+    // 진행하고, id 조회(getElementById)만 그 사본으로 잠깐 가로채서 라이브
+    // DOM(과 그 안의 터치 대상 엘리먼트)은 이 과정 내내 전혀 건드리지 않음.
+    const scratch=document.createElement('div');
+    scratch.style.cssText=`position:fixed;left:-9999px;top:0;width:${width}px;pointer-events:none;`;
+    scratch.innerHTML=outgoingHTML;
+    document.body.insertBefore(scratch, document.body.firstChild);
     fn(dir);
-    const incomingHTML=root.innerHTML;
+    const incomingHTML=scratch.innerHTML;
     fn(-dir); // 실제 이동 없이 미리보기만 한 것이므로 원래 달로 되돌림(동기 실행이라 화면 깜빡임 없음)
+    scratch.remove();
     const mkPane=(html,x)=>{
       const d=document.createElement('div');
       d.className='swipe-ghost-pane';
