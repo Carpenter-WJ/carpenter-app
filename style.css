@@ -442,6 +442,10 @@
       font-size:16px; font-weight:600; cursor:pointer; margin-top:10px;
     }
 
+    /* 탭 좌우 스와이프 월 이동 — 드래그에 콘텐츠가 따라오는 슬라이드 효과 */
+    #calSwipeRoot, #workSwipeRoot, #paySwipeRoot, #statSwipeRoot { position:relative; overflow:hidden; }
+    .swipe-ghost-pane { position:absolute; top:0; left:0; width:100%; pointer-events:none; will-change:transform; }
+
     /* 통계 */
     .stat-nav { display:flex; align-items:center; justify-content:space-between; padding:14px 18px 6px; }
     .stat-nav button { background:none; border:none; font-size:22px; color:var(--pri); cursor:pointer; padding:4px; }

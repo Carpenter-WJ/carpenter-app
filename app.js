@@ -3199,7 +3199,7 @@ function renderWorkRow(w,y,m,standalone) {
 
 // ── 입금 탭 ──
 function renderPay() {
-  document.getElementById('payViewToggle').innerHTML=`<div style="display:flex;gap:6px;margin-bottom:8px">${[['month','월별'],['site','현장별']].map(([v,l])=>`<button onclick="setPayViewMode('${v}')" style="background:${payViewMode===v?'var(--pri)':'none'};color:${payViewMode===v?'#fff':'var(--muted)'};border:1.5px solid ${payViewMode===v?'var(--pri)':'var(--border)'};border-radius:20px;font-size:12px;font-weight:700;padding:5px 14px;cursor:pointer">${l}</button>`).join('')}</div>`;
+  document.getElementById('payViewToggle').innerHTML=`<div style="display:flex;gap:6px;margin:14px 18px 8px">${[['month','월별'],['site','현장별']].map(([v,l])=>`<button onclick="setPayViewMode('${v}')" style="background:${payViewMode===v?'var(--pri)':'none'};color:${payViewMode===v?'#fff':'var(--muted)'};border:1.5px solid ${payViewMode===v?'var(--pri)':'var(--border)'};border-radius:20px;font-size:12px;font-weight:700;padding:5px 14px;cursor:pointer">${l}</button>`).join('')}</div>`;
   document.getElementById('payMonthNav').style.display=payViewMode==='month'?'flex':'none';
   document.getElementById('payLbl').textContent=`${payY}년 ${payM+1}월`;
 
@@ -3461,14 +3461,16 @@ async function delPay(id) {
 }
 
 // ── 통계 ──
+function statBackBlocked() {
+  if (isPremium) return false;
+  let nm = statM - 1, ny = statY;
+  if (nm < 0) { nm = 11; ny--; }
+  let limM = TODAY.getMonth() - 2, limY = TODAY.getFullYear();
+  if (limM < 0) { limM += 12; limY--; }
+  return ny < limY || (ny === limY && nm < limM);
+}
 function moveStat(d) {
-  if (d < 0 && !isPremium) {
-    let ny = statY, nm = statM - 1;
-    if (nm < 0) { nm = 11; ny--; }
-    let limM = TODAY.getMonth() - 2, limY = TODAY.getFullYear();
-    if (limM < 0) { limM += 12; limY--; }
-    if (ny < limY || (ny === limY && nm < limM)) { openOv('premUpgradeOv'); return; }
-  }
+  if (d < 0 && statBackBlocked()) { openOv('premUpgradeOv'); return; }
   statM+=d; if(statM>11){statM=0;statY++;} if(statM<0){statM=11;statY--;} renderStat();
 }
 
@@ -4876,10 +4878,46 @@ async function refreshFromCloud() {
 }
 
 const TAB_MOVE_FNS = {cal:moveM, work:moveWork, pay:movePay, stat:moveStat};
+const TAB_SWIPE_ROOTS = {cal:'calSwipeRoot', work:'workSwipeRoot', pay:'paySwipeRoot', stat:'statSwipeRoot'};
+
+function swipeNavAllowed(dir) {
+  if (!TAB_MOVE_FNS[curTab]) return false;
+  if (curTab==='pay' && payViewMode!=='month') return false;
+  if (curTab==='stat' && dir<0 && statBackBlocked()) return false;
+  return true;
+}
 
 function initPTR() {
   const ind=document.getElementById('ptrInd');
-  let startX=0, startY=0, pulling=false, axis=null;
+  let startX=0, startY=0, pulling=false, axis=null, ghost=null;
+
+  function destroyGhost() {
+    if(!ghost) return;
+    ghost.outgoing.remove(); ghost.incoming.remove(); ghost=null;
+  }
+  function buildGhost(dir) {
+    const root=document.getElementById(TAB_SWIPE_ROOTS[curTab]);
+    if(!root) return null;
+    const width=root.getBoundingClientRect().width||window.innerWidth;
+    const outgoingHTML=root.innerHTML;
+    const fn=TAB_MOVE_FNS[curTab];
+    fn(dir);
+    const incomingHTML=root.innerHTML;
+    fn(-dir); // 실제 이동 없이 미리보기만 한 것이므로 원래 달로 되돌림(동기 실행이라 화면 깜빡임 없음)
+    const mkPane=(html,x)=>{
+      const d=document.createElement('div');
+      d.className='swipe-ghost-pane';
+      d.style.transform=`translateX(${x}px)`;
+      d.innerHTML=html;
+      return d;
+    };
+    const outgoing=mkPane(outgoingHTML,0);
+    const incoming=mkPane(incomingHTML,dir>0?width:-width);
+    root.appendChild(outgoing);
+    root.appendChild(incoming);
+    return {root,outgoing,incoming,width,dir};
+  }
+
   document.addEventListener('touchstart',e=>{
     if(document.querySelector('.ov.show')) return;
     startX=e.touches[0].clientX;
@@ -4896,13 +4934,36 @@ function initPTR() {
       const pct=Math.min(dy/80,1);
       ind.style.opacity=String(pct);
       ind.textContent=dy>80?'놓으면 새로고침':'당겨서 새로고침';
+    } else if(axis==='h'){
+      const dir=dx<0?1:-1;
+      if(ghost && ghost.dir!==dir) destroyGhost();
+      if(!ghost && swipeNavAllowed(dir)) ghost=buildGhost(dir);
+      if(ghost){
+        ghost.outgoing.style.transform=`translateX(${dx}px)`;
+        const incomingBase=ghost.dir>0?ghost.width:-ghost.width;
+        ghost.incoming.style.transform=`translateX(${incomingBase+dx}px)`;
+      }
     }
   },{passive:true});
   document.addEventListener('touchend',async e=>{
     if(axis==='h'){
       const dx=e.changedTouches[0].clientX-startX;
-      const fn=TAB_MOVE_FNS[curTab];
-      if(fn && Math.abs(dx)>60) fn(dx<0?1:-1);
+      if(ghost){
+        const {outgoing,incoming,width,dir}=ghost;
+        const commit=Math.abs(dx)>60;
+        outgoing.style.transition=incoming.style.transition='transform 200ms ease-out';
+        requestAnimationFrame(()=>{
+          outgoing.style.transform=`translateX(${commit?(dir>0?-width:width):0}px)`;
+          incoming.style.transform=`translateX(${commit?0:(dir>0?width:-width)}px)`;
+        });
+        setTimeout(()=>{
+          if(commit) TAB_MOVE_FNS[curTab](dir);
+          outgoing.remove(); incoming.remove();
+        },210);
+        ghost=null;
+      } else if(Math.abs(dx)>60 && TAB_MOVE_FNS[curTab]) {
+        TAB_MOVE_FNS[curTab](dx<0?1:-1);
+      }
     } else if(startY && pulling){
       const dy=e.changedTouches[0].clientY-startY;
       if(dy>80){ await refreshFromCloud(); }
