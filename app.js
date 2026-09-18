@@ -4890,6 +4890,7 @@ function swipeNavAllowed(dir) {
 function initPTR() {
   const ind=document.getElementById('ptrInd');
   let startX=0, startY=0, pulling=false, axis=null, ghost=null, busy=false, watchdog=null;
+  let pendingDx=0, dragRafPending=false;
 
   function destroyGhost() {
     if(!ghost) return;
@@ -4959,6 +4960,13 @@ function initPTR() {
     const incoming=mkPane(incomingHTML,dir>0?width:-width);
     root.appendChild(outgoing);
     root.appendChild(incoming);
+    // 실기기(특히 iOS WKWebView)에서 방금 넣은 큰 CSS 그리드 콘텐츠의 레이아웃이
+    // 채 끝나기도 전에 그 위에서 transform 애니메이션이 시작되면, 아직 자리를
+    // 잡지 못한 상태의 화면이 그대로 캡처돼 애니메이션 내내 유지되면서 다른
+    // 주(週)의 현장 이름이 엉뚱한 위치에 겹쳐 보이는 경우가 실제로 확인됨
+    // (사용자가 보내준 화면 녹화로 재현) — offsetHeight를 읽어서 레이아웃을
+    // 강제로 먼저 끝내놓음
+    void outgoing.offsetHeight; void incoming.offsetHeight;
     return {root,outgoing,incoming,width,dir};
   }
 
@@ -4991,9 +4999,21 @@ function initPTR() {
       if(ghost && ghost.dir!==dir) destroyGhost();
       if(!ghost && !busy && swipeNavAllowed(dir)) ghost=buildGhost(dir);
       if(ghost){
-        ghost.outgoing.style.transform=`translateX(${dx}px)`;
-        const incomingBase=ghost.dir>0?ghost.width:-ghost.width;
-        ghost.incoming.style.transform=`translateX(${incomingBase+dx}px)`;
+        // touchmove가 올 때마다 바로 transform을 쓰지 않고 rAF 한 번에 모아서
+        // 적용 — 짧은 시간에 몰려오는 이벤트마다 매번 스타일을 새로 쓰면 브라우저가
+        // 레이아웃/페인트를 다 못 따라가서 위(buildGhost) 문제와 비슷하게 화면이
+        // 어긋난 채로 보일 수 있어서, 한 프레임에 한 번만 최신 위치로 갱신되게 함
+        pendingDx=dx;
+        if(!dragRafPending){
+          dragRafPending=true;
+          requestAnimationFrame(()=>{
+            dragRafPending=false;
+            if(!ghost) return;
+            ghost.outgoing.style.transform=`translateX(${pendingDx}px)`;
+            const incomingBase=ghost.dir>0?ghost.width:-ghost.width;
+            ghost.incoming.style.transform=`translateX(${incomingBase+pendingDx}px)`;
+          });
+        }
         armWatchdog();
       }
     }
