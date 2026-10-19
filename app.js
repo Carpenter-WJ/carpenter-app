@@ -4894,7 +4894,7 @@ function initPTR() {
 
   function destroyGhost() {
     if(!ghost) return;
-    ghost.outgoing.remove(); ghost.incoming.remove(); ghost=null;
+    ghost.outgoing.remove(); ghost=null;
   }
   function armWatchdog() {
     // 실기기에서 시스템 제스처 충돌 등으로 touchmove가 끊긴 뒤 touchend/touchcancel이
@@ -4909,18 +4909,20 @@ function initPTR() {
   function resolveGesture(dx) {
     clearTimeout(watchdog);
     if(!ghost) return;
-    const {outgoing,incoming,width,dir}=ghost;
+    const {outgoing,width,dir}=ghost;
     const tab=curTab; // 애니메이션 도중 탭을 바꿔도 원래 탭의 이동함수가 불리도록 고정
     const commit=Math.abs(dx)>60;
     busy=true;
-    outgoing.style.transition=incoming.style.transition='transform 200ms ease-out';
+    outgoing.style.transition='transform 200ms ease-out';
     requestAnimationFrame(()=>{
       outgoing.style.transform=`translateX(${commit?(dir>0?-width:width):0}px)`;
-      incoming.style.transform=`translateX(${commit?0:(dir>0?width:-width)}px)`;
     });
     setTimeout(()=>{
+      // 다음 달 내용은 제스처가 완전히 끝난(터치가 이미 안 걸린) 지금 시점에만
+      // 실제로 계산해서 보여줌 — 라이브 DOM을 바꿔도 더 이상 진행 중인 터치가
+      // 없으므로 안전함
       if(commit) TAB_MOVE_FNS[tab](dir);
-      outgoing.remove(); incoming.remove();
+      outgoing.remove();
       busy=false;
     },210);
     ghost=null;
@@ -4931,43 +4933,20 @@ function initPTR() {
     // 이전 제스처가 touchcancel 등으로 비정상 종료돼 고스트가 안 지워진 채 남아있을 수 있으므로 방어적으로 먼저 정리
     root.querySelectorAll(':scope > .swipe-ghost-pane').forEach(p=>p.remove());
     const width=root.getBoundingClientRect().width||window.innerWidth;
-    const outgoingHTML=root.innerHTML;
-    const fn=TAB_MOVE_FNS[curTab];
-    // 다음/이전 달 미리보기를 만들려고 fn()을 실제 라이브 DOM(root) 위에서 바로
-    // 호출하면, 지금 터치가 시작된 바로 그 엘리먼트(예: 날짜 칸이나 현장 바)가
-    // innerHTML 교체로 통째로 사라져(detach) 버림 — 그러면 브라우저가 그 터치
-    // 시퀀스의 나머지 touchmove/touchend를 조용히 끊어버려서, 드래그가 중간에
-    // 멈춘 채 이전 화면이 잔상처럼 남는 것처럼 보이는 문제가 있었음(실기기
-    // 재현으로 확인됨). 그래서 실제 렌더링은 화면 밖 스크래치 사본에서
-    // 진행하고, id 조회(getElementById)만 그 사본으로 잠깐 가로채서 라이브
-    // DOM(과 그 안의 터치 대상 엘리먼트)은 이 과정 내내 전혀 건드리지 않음.
-    const scratch=document.createElement('div');
-    scratch.style.cssText=`position:fixed;left:-9999px;top:0;width:${width}px;pointer-events:none;`;
-    scratch.innerHTML=outgoingHTML;
-    document.body.insertBefore(scratch, document.body.firstChild);
-    fn(dir);
-    const incomingHTML=scratch.innerHTML;
-    fn(-dir); // 실제 이동 없이 미리보기만 한 것이므로 원래 달로 되돌림(동기 실행이라 화면 깜빡임 없음)
-    scratch.remove();
-    const mkPane=(html,x)=>{
-      const d=document.createElement('div');
-      d.className='swipe-ghost-pane';
-      d.style.transform=`translateX(${x}px)`;
-      d.innerHTML=html;
-      return d;
-    };
-    const outgoing=mkPane(outgoingHTML,0);
-    const incoming=mkPane(incomingHTML,dir>0?width:-width);
+    // 다음 달 내용을 미리 계산해서 같이 보여주는 방식은 그만둠 — 그 부분에서
+    // 터치 대상 엘리먼트가 사라져 제스처가 끊기는 문제, 레이아웃이 덜 끝난
+    // 상태로 애니메이션이 시작돼 다른 주(週) 내용이 겹쳐 보이는 문제가
+    // 실기기에서 반복적으로 발생했음(사용자 화면 녹화로 확인). 지금은 이미
+    // 화면에 그려져 안정된 "지금 보이는 화면"만 복제해 손가락을 따라
+    // 움직이게 하고, 다음 달 내용은 제스처가 끝난 뒤에만 계산 — 미리 렌더링해
+    // 동기화해야 할 대상 자체가 없어져서 그 버그들이 구조적으로 재발할 수 없음.
+    const outgoing=document.createElement('div');
+    outgoing.className='swipe-ghost-pane';
+    outgoing.style.transform='translateX(0px)';
+    outgoing.innerHTML=root.innerHTML;
     root.appendChild(outgoing);
-    root.appendChild(incoming);
-    // 실기기(특히 iOS WKWebView)에서 방금 넣은 큰 CSS 그리드 콘텐츠의 레이아웃이
-    // 채 끝나기도 전에 그 위에서 transform 애니메이션이 시작되면, 아직 자리를
-    // 잡지 못한 상태의 화면이 그대로 캡처돼 애니메이션 내내 유지되면서 다른
-    // 주(週)의 현장 이름이 엉뚱한 위치에 겹쳐 보이는 경우가 실제로 확인됨
-    // (사용자가 보내준 화면 녹화로 재현) — offsetHeight를 읽어서 레이아웃을
-    // 강제로 먼저 끝내놓음
-    void outgoing.offsetHeight; void incoming.offsetHeight;
-    return {root,outgoing,incoming,width,dir};
+    void outgoing.offsetHeight;
+    return {root,outgoing,width,dir};
   }
 
   document.addEventListener('touchstart',e=>{
@@ -4999,10 +4978,7 @@ function initPTR() {
       if(ghost && ghost.dir!==dir) destroyGhost();
       if(!ghost && !busy && swipeNavAllowed(dir)) ghost=buildGhost(dir);
       if(ghost){
-        // touchmove가 올 때마다 바로 transform을 쓰지 않고 rAF 한 번에 모아서
-        // 적용 — 짧은 시간에 몰려오는 이벤트마다 매번 스타일을 새로 쓰면 브라우저가
-        // 레이아웃/페인트를 다 못 따라가서 위(buildGhost) 문제와 비슷하게 화면이
-        // 어긋난 채로 보일 수 있어서, 한 프레임에 한 번만 최신 위치로 갱신되게 함
+        // touchmove가 올 때마다 바로 transform을 쓰지 않고 rAF 한 번에 모아서 적용
         pendingDx=dx;
         if(!dragRafPending){
           dragRafPending=true;
@@ -5010,8 +4986,6 @@ function initPTR() {
             dragRafPending=false;
             if(!ghost) return;
             ghost.outgoing.style.transform=`translateX(${pendingDx}px)`;
-            const incomingBase=ghost.dir>0?ghost.width:-ghost.width;
-            ghost.incoming.style.transform=`translateX(${incomingBase+pendingDx}px)`;
           });
         }
         armWatchdog();
