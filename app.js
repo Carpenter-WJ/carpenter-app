@@ -2927,6 +2927,8 @@ async function saveWork() {
       existing.site=site;existing.unit=unit;existing.unitOverrides=unitOverrides;existing.dates=[...editDates].sort();
       existing.color=editColor;existing.workDesc=workDesc;existing.address=address;existing.contact=contact;
       existing.phone=phone;existing.memo=memo;existing.wage=wage;existing.taxWithheld=taxWithheld;existing.expenses=expenses;
+      // 정산완료 후 일정이 추가되는 등 금액이 늘어나 이미 받은 돈보다 많아지면 정산완료를 다시 풀어줌
+      if(existing.isPaid && expAmt(existing)>rcvAmt(existing.id)) existing.isPaid=false;
       savedW=existing;
     } else {
       const wId=Date.now().toString(36);
@@ -2982,6 +2984,8 @@ async function saveWork() {
         createNotification(existing.ownerUid||existing.createdBy,'wage_modified',existing.id,site).catch(()=>{});
       }
     }
+    // 정산완료 후 일정이 추가되는 등 금액이 늘어나 이미 받은 돈보다 많아지면 정산완료를 다시 풀어줌
+    if(existing.isPaid && expAmt(existing)>rcvAmt(existing.id)) existing.isPaid=false;
   } else {
     let jobId;
     if(dataMode==='team'){
