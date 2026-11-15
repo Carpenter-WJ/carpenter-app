@@ -124,10 +124,18 @@ service cloud.firestore {
           || (request.auth != null && request.auth.uid == requestUid);
       }
 
-      // 강제퇴출 팀원 기록 이관 패키지 — 팀장이 작성, 퇴출 팀원 본인만 읽고 삭제
+      // 강제퇴출 팀원 기록 이관 패키지 — 팀장이 작성, 퇴출 팀원 본인만 읽고 삭제.
+      // 문서 ID는 구 형식(uid 그대로)과 신규 형식(uid_타임스탬프, 같은 팀원이 여러 번
+      // 재가입/퇴출될 때 패키지가 덮어써지지 않도록) 둘 다 존재할 수 있음 — 신규
+      // 형식은 문서 데이터의 uid 필드로, 구 형식은 문서 ID 자체로 본인 확인.
       match /memberExits/{exitUid} {
         allow create, update: if isTeamLeader(teamId, request.auth.uid);
-        allow read, delete: if request.auth != null && request.auth.uid == exitUid;
+        // 팀장은 "팀원별 통계"에서 이전 팀원 이력을 계속 조회해야 하므로 전체 읽기 허용
+        allow read: if isTeamLeader(teamId, request.auth.uid)
+          || (request.auth != null
+              && (resource.data.get('uid', null) == request.auth.uid || exitUid == request.auth.uid));
+        allow delete: if request.auth != null
+          && (resource.data.get('uid', null) == request.auth.uid || exitUid == request.auth.uid);
       }
 
       // jobs = 현장 정보(주소/연락처/메모/공개범위 등)만 보관하는 공유 마스터 문서.
