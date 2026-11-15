@@ -102,7 +102,12 @@ service cloud.firestore {
           || (isTeamLeader(teamId, request.auth.uid)
               && request.resource.data.role == 'member');
 
-        allow update: if isTeamLeader(teamId, request.auth.uid);
+        // 팀장은 전체 수정 가능. 본인은 자기 문서의 displayName만 수정 가능
+        // (editDisplayName()에서 본인 닉네임 변경 시 사용 — role 등 다른 필드는 못 건드림).
+        allow update: if isTeamLeader(teamId, request.auth.uid)
+          || (request.auth != null && request.auth.uid == memberUid
+              && isTeamMember(teamId, request.auth.uid)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']));
         // 팀장이 강제퇴출하거나 본인이 자진탈퇴 시 삭제 허용
         allow delete: if isTeamLeader(teamId, request.auth.uid)
           || (request.auth != null && request.auth.uid == memberUid
