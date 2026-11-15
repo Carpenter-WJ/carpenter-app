@@ -169,10 +169,17 @@ service cloud.firestore {
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
         // createdBy는 해당 wages의 ownerUid와 일치해야 함.
         // 팀장이 팀원 대신 정산을 입력할 때도 createdBy = ownerUid(팀원uid)로 설정해야 규칙 통과.
+        // 단, 직접 입력(게스트) 인력은 계정이 없어 ownerUid 자체가 없으므로 — 이 경우엔
+        // 팀장만 생성 가능하고 createdBy는 팀장 본인 uid로 설정(클라이언트 동작과 일치).
         allow create: if isTeamMember(teamId, request.auth.uid)
-          && request.resource.data.createdBy ==
-             get(/databases/$(database)/documents/teams/$(teamId)/wages/$(request.resource.data.wageId)).data.ownerUid
-          && (isTeamLeader(teamId, request.auth.uid) || request.auth.uid == request.resource.data.createdBy);
+          && (
+            (get(/databases/$(database)/documents/teams/$(teamId)/wages/$(request.resource.data.wageId)).data.get('ownerUid', null) == null
+              && isTeamLeader(teamId, request.auth.uid)
+              && request.resource.data.createdBy == request.auth.uid)
+            || (request.resource.data.createdBy ==
+                get(/databases/$(database)/documents/teams/$(teamId)/wages/$(request.resource.data.wageId)).data.get('ownerUid', null)
+              && (isTeamLeader(teamId, request.auth.uid) || request.auth.uid == request.resource.data.createdBy))
+          );
         allow update, delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
       }
