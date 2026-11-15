@@ -3460,6 +3460,13 @@ async function delPay(id) {
     } catch(e) { console.error('삭제 오류:', e); alert('삭제 권한이 없거나 오류가 발생했습니다.'); return; }
   }
   DB.payments=DB.payments.filter(p=>p.id!==id);
+  // 입금 기록을 지워서 받은 돈이 받을 돈보다 적어지면 정산완료를 다시 풀어줌
+  const w=DB.works.find(x=>x.id===selWorkId);
+  if(w && w.isPaid && expAmt(w)>rcvAmt(selWorkId)) {
+    w.isPaid=false;
+    try { await withRetry(() => updateOneWage(w)); }
+    catch(e) { console.error('정산완료 해제 저장 오류:', e); }
+  }
   localStorage.setItem('moksujilji2', JSON.stringify(DB));
   openPayDetail(selWorkId); renderPay();
 }
@@ -4891,7 +4898,13 @@ function swipeNavAllowed(dir) {
   return true;
 }
 
+let _ptrInited=false;
 function initPTR() {
+  // 같은 페이지를 새로고침하지 않고 로그아웃→재로그인을 반복하면 onAuthStateChanged가
+  // 매번 다시 불려서 이 함수가 또 호출될 수 있음 — document 리스너가 중복
+  // 등록되는 것을 방지
+  if(_ptrInited) return;
+  _ptrInited=true;
   const ind=document.getElementById('ptrInd');
   let startX=0, startY=0, pulling=false, axis=null, ghost=null, busy=false, watchdog=null;
   let pendingDx=0, dragRafPending=false;
@@ -5001,7 +5014,10 @@ function initPTR() {
       const dx=e.changedTouches[0].clientX-startX;
       if(ghost){
         resolveGesture(dx);
-      } else if(Math.abs(dx)>60 && TAB_MOVE_FNS[curTab]) {
+      } else if(Math.abs(dx)>60 && TAB_MOVE_FNS[curTab] && !(curTab==='pay' && payViewMode!=='month')) {
+        // 정산탭 "현장별" 보기에서는 월 이동 자체가 의미 없으므로(화면에 아무 변화도
+        // 없이 숨겨진 월 커서만 바뀌는 것을 방지) 이 폴백 경로도 막음. 통계탭의
+        // 무료 한도 제한처럼 "실제로 함수를 호출해야 안내가 뜨는" 경우는 그대로 둠.
         TAB_MOVE_FNS[curTab](dx<0?1:-1);
       }
     } else if(startY && pulling){
