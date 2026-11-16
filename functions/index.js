@@ -19,68 +19,75 @@ function nextDay(ds) {
 }
 
 async function calendarFeedHandler(req, res) {
-  const uid = req.query.uid;
-  const token = req.query.token;
-  if (!uid || !token) {
-    res.status(400).send('잘못된 요청입니다.');
-    return;
-  }
+  try {
+    const uid = req.query.uid;
+    const token = req.query.token;
+    // 쿼리파라미터가 중복으로 오면(?uid=a&uid=b) Express가 배열로 파싱해서
+    // Firestore .doc()가 바로 던지는 에러로 이어질 수 있어 문자열인지도 확인.
+    if (!uid || !token || typeof uid !== 'string' || typeof token !== 'string') {
+      res.status(400).send('잘못된 요청입니다.');
+      return;
+    }
 
-  const db = getFirestore();
-  const userRef = db.collection('users').doc(uid);
-  const userSnap = await userRef.get();
-  const userData = userSnap.exists ? userSnap.data() : null;
+    const db = getFirestore();
+    const userRef = db.collection('users').doc(uid);
+    const userSnap = await userRef.get();
+    const userData = userSnap.exists ? userSnap.data() : null;
 
-  if (!userData || !userData.calendarFeedToken || userData.calendarFeedToken !== token) {
-    res.status(403).send('유효하지 않은 구독 링크입니다.');
-    return;
-  }
+    if (!userData || !userData.calendarFeedToken || userData.calendarFeedToken !== token) {
+      res.status(403).send('유효하지 않은 구독 링크입니다.');
+      return;
+    }
 
-  const works = [];
-  const personalSnap = await userRef.collection('works').get();
-  personalSnap.docs.forEach((d) => works.push({...d.data(), id: d.id}));
+    const works = [];
+    const personalSnap = await userRef.collection('works').get();
+    personalSnap.docs.forEach((d) => works.push({...d.data(), id: d.id}));
 
-  if (userData.teamId) {
-    const teamRef = db.collection('teams').doc(userData.teamId);
-    const [wagesSnap, jobsSnap] = await Promise.all([
-      teamRef.collection('wages').where('ownerUid', '==', uid).get(),
-      teamRef.collection('jobs').get(),
-    ]);
-    const jobById = {};
-    jobsSnap.docs.forEach((d) => { jobById[d.id] = d.data(); });
-    wagesSnap.docs.forEach((d) => {
-      const wg = d.data();
-      const job = jobById[wg.jobId] || {};
-      works.push({site: job.site || '현장', dates: wg.dates || [], workDesc: wg.workDesc || '', id: d.id});
+    if (userData.teamId) {
+      const teamRef = db.collection('teams').doc(userData.teamId);
+      const [wagesSnap, jobsSnap] = await Promise.all([
+        teamRef.collection('wages').where('ownerUid', '==', uid).get(),
+        teamRef.collection('jobs').get(),
+      ]);
+      const jobById = {};
+      jobsSnap.docs.forEach((d) => { jobById[d.id] = d.data(); });
+      wagesSnap.docs.forEach((d) => {
+        const wg = d.data();
+        const job = jobById[wg.jobId] || {};
+        works.push({site: job.site || '현장', dates: wg.dates || [], workDesc: wg.workDesc || '', id: d.id});
+      });
+    }
+
+    const lines = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//현장일지//KO',
+      'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:현장일지 작업일정',
+      'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
+    ];
+    works.forEach((w) => {
+      (w.dates || []).forEach((ds) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return;
+        const dtStart = ds.replace(/-/g, '');
+        // 현장명이 대부분 한글이라 예전엔 site를 UID에 섞으면 다 지워져서 같은 날짜에
+        // 현장이 여러 곳이면 ID가 겹치는 문제가 있었음 — 문서 id 기반으로 고유성 보장
+        const eventUid = `${w.id}-${ds}@moksujilji`;
+        lines.push('BEGIN:VEVENT');
+        lines.push(`UID:${eventUid}`);
+        lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`);
+        lines.push(`DTSTART;VALUE=DATE:${dtStart}`);
+        lines.push(`DTEND;VALUE=DATE:${nextDay(ds)}`);
+        lines.push(`SUMMARY:${icsEscape(w.site || '현장')}${w.workDesc ? icsEscape(' - ' + w.workDesc) : ''}`);
+        lines.push('END:VEVENT');
+      });
     });
+    lines.push('END:VCALENDAR');
+
+    res.set('Content-Type', 'text/calendar; charset=utf-8');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(lines.join('\r\n'));
+  } catch (e) {
+    console.error('캘린더 구독 피드 생성 오류:', e);
+    res.status(500).send('일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
   }
-
-  const lines = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//현장일지//KO',
-    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:현장일지 작업일정',
-    'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
-  ];
-  works.forEach((w) => {
-    (w.dates || []).forEach((ds) => {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return;
-      const dtStart = ds.replace(/-/g, '');
-      // 현장명이 대부분 한글이라 예전엔 site를 UID에 섞으면 다 지워져서 같은 날짜에
-      // 현장이 여러 곳이면 ID가 겹치는 문제가 있었음 — 문서 id 기반으로 고유성 보장
-      const eventUid = `${w.id}-${ds}@moksujilji`;
-      lines.push('BEGIN:VEVENT');
-      lines.push(`UID:${eventUid}`);
-      lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`);
-      lines.push(`DTSTART;VALUE=DATE:${dtStart}`);
-      lines.push(`DTEND;VALUE=DATE:${nextDay(ds)}`);
-      lines.push(`SUMMARY:${icsEscape(w.site || '현장')}${w.workDesc ? icsEscape(' - ' + w.workDesc) : ''}`);
-      lines.push('END:VEVENT');
-    });
-  });
-  lines.push('END:VCALENDAR');
-
-  res.set('Content-Type', 'text/calendar; charset=utf-8');
-  res.set('Cache-Control', 'private, max-age=3600');
-  res.send(lines.join('\r\n'));
 }
 exports.calendarFeed = onRequest({region: 'asia-northeast3', invoker: 'public'}, calendarFeedHandler);
 
