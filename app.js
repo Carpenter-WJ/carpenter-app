@@ -2912,6 +2912,12 @@ async function saveWork() {
   const unit=Number(document.getElementById('inUnit').value);
   const unitOverrides={};
   editDates.forEach(d=>{ if(editUnitOverrides[d]!=null && Number(editUnitOverrides[d])!==unit) unitOverrides[d]=Number(editUnitOverrides[d]); });
+  // 아래쪽에 Firestore await가 있는 분기(신규 현장 생성)가 있어서, 그 await가
+  // 끝나기를 기다리는 사이 사용자가 오버레이를 닫고 다른 작업을 열면 editDates/
+  // editColor 전역값이 그새 바뀔 수 있음 — 함수 시작 시점 값을 지금 복사해두고
+  // 이후로는 전역을 다시 읽지 않고 이 복사본만 사용.
+  const dates=[...editDates].sort();
+  const color=editColor;
   const workId=document.getElementById('editWorkId').value;
   const workDesc=document.getElementById('inWorkDesc').value.trim();
   const address=document.getElementById('inAddress').value.trim();
@@ -2933,15 +2939,15 @@ async function saveWork() {
     const expenses=editExpenses.filter(e=>Number(e.amount)>0).map(e=>({category:e.category, amount:Number(e.amount), ...(e.note?{note:e.note}:{})}));
     let savedW;
     if(existing){
-      existing.site=site;existing.unit=unit;existing.unitOverrides=unitOverrides;existing.dates=[...editDates].sort();
-      existing.color=editColor;existing.workDesc=workDesc;existing.address=address;existing.contact=contact;
+      existing.site=site;existing.unit=unit;existing.unitOverrides=unitOverrides;existing.dates=dates;
+      existing.color=color;existing.workDesc=workDesc;existing.address=address;existing.contact=contact;
       existing.phone=phone;existing.memo=memo;existing.wage=wage;existing.taxWithheld=taxWithheld;existing.expenses=expenses;
       // 정산완료 후 일정이 추가되는 등 금액이 늘어나 이미 받은 돈보다 많아지면 정산완료를 다시 풀어줌
       if(existing.isPaid && expAmt(existing)>rcvAmt(existing.id)) existing.isPaid=false;
       savedW=existing;
     } else {
       const wId=Date.now().toString(36);
-      savedW={id:wId,site,workDesc,address,contact,phone,memo,wage,taxWithheld,expenses,unit,dates:[...editDates].sort(),isPaid:false,color:editColor,isPersonal:true};
+      savedW={id:wId,site,workDesc,address,contact,phone,memo,wage,taxWithheld,expenses,unit,dates,isPaid:false,color,isPersonal:true};
       DB.works.push(savedW);
     }
     DB.works.sort((a,b)=>(b.dates[b.dates.length-1]||'').localeCompare(a.dates[a.dates.length-1]||''));
@@ -2983,11 +2989,11 @@ async function saveWork() {
 
   let _savedWork = existing; // 핀포인트 저장 대상 추적
   if(existing){
-    existing.site=site;existing.unit=unit;existing.unitOverrides=unitOverrides;existing.dates=editDates.sort();existing.color=editColor;
+    existing.site=site;existing.unit=unit;existing.unitOverrides=unitOverrides;existing.dates=dates;existing.color=color;
     existing.workDesc=workDesc;existing.address=address;existing.contact=contact;existing.phone=phone;existing.memo=memo;
     if(wageEditable){ existing.wage=wage; existing.taxWithheld=taxWithheld; existing.expenses=expenses; }
     if(dataMode==='team'){
-      saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
+      saveJobInfo(existing.jobId,{site,address,contact,phone,memo,color,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
       // 팀장이 타인 일당 수정 시 알림
       if(isLeaderMode && (existing.ownerUid||existing.createdBy)!==currentUser.uid){
         createNotification(existing.ownerUid||existing.createdBy,'wage_modified',existing.id,site).catch(()=>{});
@@ -3002,11 +3008,11 @@ async function saveWork() {
       if(matched){
         jobId=matched.id;
         if(address||contact||phone||memo||isLeaderMode){
-          saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
+          saveJobInfo(jobId,{site,address,contact,phone,memo,color,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
         }
       } else {
         jobId=Date.now().toString(36)+'j';
-        const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+        const jobData={site,address,contact,phone,memo,color,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
         try {
           await teamRef().collection('jobs').doc(jobId).set(jobData);
           DB.jobs.push({id:jobId,...jobData});
@@ -3018,7 +3024,7 @@ async function saveWork() {
       }
     }
     const wId=Date.now().toString(36);
-    const w={id:wId,site,workDesc,wage,taxWithheld,expenses,unit,unitOverrides,dates:editDates.sort(),isPaid:false,color:editColor,address,contact,phone,memo};
+    const w={id:wId,site,workDesc,wage,taxWithheld,expenses,unit,unitOverrides,dates,isPaid:false,color,address,contact,phone,memo};
     if(dataMode==='team'){ w.createdBy=currentUser.uid; w.ownerUid=ownerUid; w.jobId=jobId; }
     DB.works.push(w);
     _savedWork = w;
