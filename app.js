@@ -2842,7 +2842,11 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
   }
   if(members.length===0){alert('한 명 이상 선택해주세요.');return;}
 
-  const dayCount=editDates.length;
+  // 아래에 Firestore await(신규 현장 생성)가 있어서, 그 뒤에 editDates/editColor를
+  // 다시 읽으면 대기 중 오버레이가 바뀌었을 때 값이 틀어질 수 있음 — 미리 복사.
+  const sortedDates=[...editDates].sort();
+  const color=editColor;
+  const dayCount=sortedDates.length;
   const summaryLines=members.map(m=>`• ${m.name} · ${dayCount}일 · ${fmtW(netWage(m)*dayCount*m.unit)}${m.taxWithheld?' (3.3%공제)':''}`).join('\n');
   if(!confirm(`[${site}]\n\n${summaryLines}\n\n총 ${members.length}명을 등록할까요?`))return;
 
@@ -2854,10 +2858,10 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
   const matched=DB.jobs.find(j=>j.site===site);
   if(matched){
     jobId=matched.id;
-    saveJobInfo(jobId,{site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
+    saveJobInfo(jobId,{site,address,contact,phone,memo,color,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax});
   } else {
     jobId=Date.now().toString(36)+'j';
-    const jobData={site,address,contact,phone,memo,color:editColor,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+    const jobData={site,address,contact,phone,memo,color,visibility:jobVis,sharedWith:jobSharedWith,defaultTaxWithheld:jobDefaultTax,createdBy:currentUser.uid,createdAt:firebase.firestore.FieldValue.serverTimestamp()};
     try{
       await teamRef().collection('jobs').doc(jobId).set(jobData);
       DB.jobs.push({id:jobId,...jobData});
@@ -2871,16 +2875,18 @@ async function saveWorkMulti(site,workDesc,address,contact,phone,memo) {
   const now=Date.now();
   members.forEach((m,i)=>{
     const wId=(now+i).toString(36);
-    const sortedDates=editDates.sort();
-    const wageData={jobId,dates:sortedDates,unit:m.unit,wage:m.wage,taxWithheld:m.taxWithheld,isPaid:false,workDesc,
+    // .sort()는 제자리 정렬이라 같은 배열을 여러 번 쓰면 모든 팀원의 dates가
+    // 같은 인스턴스를 공유하게 됨 — 팀원마다 독립된 복사본을 줌.
+    const dates=[...sortedDates];
+    const wageData={jobId,dates,unit:m.unit,wage:m.wage,taxWithheld:m.taxWithheld,isPaid:false,workDesc,
       createdBy:currentUser.uid,
       createdAt:firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
     if(m.uid) wageData.ownerUid=m.uid;
     else { wageData.guestName=m.guestName; wageData.isGuest=true; }
     batch.set(t.collection('wages').doc(wId),wageData);
-    newWorks.push({id:wId,site,workDesc,wage:m.wage,unit:m.unit,taxWithheld:m.taxWithheld,dates:sortedDates,isPaid:false,
-      color:editColor,address,contact,phone,memo,
+    newWorks.push({id:wId,site,workDesc,wage:m.wage,unit:m.unit,taxWithheld:m.taxWithheld,dates,isPaid:false,
+      color,address,contact,phone,memo,
       createdBy:currentUser.uid,ownerUid:m.uid||null,
       guestName:m.guestName||null,isGuest:!m.uid,jobId});
     if(m.uid&&m.uid!==currentUser.uid) createNotification(m.uid,'wage_added',wId,site).catch(()=>{});
