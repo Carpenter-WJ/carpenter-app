@@ -3548,7 +3548,10 @@ function renderMemberStats() {
       const maxMs = Math.max(...(w.dates||[]).map(d => new Date(d+'T00:00:00').getTime()));
       let idx = exitTimes.findIndex(t => maxMs < t);
       if (idx === -1) idx = exitTimes.length;
-      if (idx < groups.length) groups[idx].push(w);
+      // 이미 탈퇴한(비활성) 팀원에게 미래 날짜로 예약해둔 작업처럼, maxMs가 마지막
+      // 퇴장 시점보다 늦으면 "현재 기간" 버킷이 없어서(groups.length===exitTimes.length)
+      // idx가 범위를 벗어나 그냥 누락되던 문제 — 마지막 기간에 포함시켜 누락 방지.
+      groups[Math.min(idx, groups.length-1)].push(w);
     });
 
     const statusBadge = isActive
