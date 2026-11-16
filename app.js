@@ -810,6 +810,7 @@ async function loadData() {
           }
         } catch(e) { console.warn('퇴출 이관 처리 오류:', e.message); }
         await userRef.update({ teamId: firebase.firestore.FieldValue.delete() });
+        stopNotifListener();
         dataMode = 'personal'; activeTeamId = null; teamRole = null; teamInfo = null; DB.jobs = []; DB.notifications = [];
         await loadPersonalData(userRef);
         showToast('팀에서 내보내졌습니다. 작업 기록은 개인 기록으로 이관되었어요.');
@@ -1350,6 +1351,7 @@ async function deleteTeam() {
     batch2.update(userRef, { teamId: firebase.firestore.FieldValue.delete() });
     await batch2.commit();
 
+    stopNotifListener();
     activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     dataMode = 'personal';
     DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
@@ -1400,6 +1402,7 @@ async function leaveTeam() {
     batch2.update(userRef, { teamId: firebase.firestore.FieldValue.delete() });
     await batch2.commit();
 
+    stopNotifListener();
     activeTeamId = null; teamInfo = null; teamRole = null; teamMembers = [];
     dataMode = 'personal';
     DB = { works: [], payments: [], jobs: [], notifications: [], dailyNotes: {} };
