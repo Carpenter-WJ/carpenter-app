@@ -3389,7 +3389,7 @@ function openPayDetail(wId) {
         <div class="pr-main">
           <div class="pr-date">${fmtDate(p.date)}</div>
           <div class="pr-amt">+${fmtW(p.amount)}</div>
-          ${p.note?`<div class="pr-note">${p.note}</div>`:''}
+          ${p.note?`<div class="pr-note">${escapeHtml(p.note)}</div>`:''}
         </div>
         <button class="pr-del" onclick="delPay('${p.id}')">🗑</button>
       </div>`).join('');
@@ -3772,7 +3772,7 @@ function printReport() {
       <td class="td-sub">${p.date.slice(5).replace('-','/')}</td>
       <td class="td-site">${w ? escapeHtml(w.site) : '—'}</td>
       <td class="td-num td-bold">${fmtW(p.amount)}</td>
-      <td class="td-sub">${p.note || ''}</td>
+      <td class="td-sub">${escapeHtml(p.note || '')}</td>
     </tr>`;
   }).join('');
 
