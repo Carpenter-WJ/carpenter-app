@@ -154,8 +154,11 @@ service cloud.firestore {
                       && resource.data.get('sharedWith', []).hasAny([request.auth.uid]))));
         allow create: if isTeamMember(teamId, request.auth.uid)
           && request.resource.data.createdBy == request.auth.uid;
-        // 현장 정보는 팀원 누구나 수정 가능(visibility/sharedWith 포함).
-        allow update: if isTeamMember(teamId, request.auth.uid);
+        // 현장 정보는 팀원 누구나 수정 가능(visibility/sharedWith 포함)하되,
+        // createdBy는 못 바꾸게 막음 — 안 그러면 본인 걸로 바꿔치기한 뒤
+        // 아래 delete 규칙(생성자 본인 삭제 가능)을 통과해 남의 현장을 지울 수 있음.
+        allow update: if isTeamMember(teamId, request.auth.uid)
+          && request.resource.data.createdBy == resource.data.createdBy;
         allow delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid) && resource.data.createdBy == request.auth.uid);
       }
@@ -172,7 +175,13 @@ service cloud.firestore {
           && (request.resource.data.ownerUid == request.auth.uid
               || isTeamLeader(teamId, request.auth.uid))
           && exists(/databases/$(database)/documents/teams/$(teamId)/jobs/$(request.resource.data.jobId));
-        allow update, delete: if isTeamLeader(teamId, request.auth.uid)
+        // ownerUid는 수정으로 못 바꾸게 막음 — 안 그러면 본인 기록을 동료 소유로
+        // 재할당해서 급여/세금 집계가 양쪽 다 꼬일 수 있음(클라이언트도 이 필드를
+        // update로 바꾸는 경로가 없음).
+        allow update: if (isTeamLeader(teamId, request.auth.uid)
+            || (isTeamMember(teamId, request.auth.uid) && resource.data.ownerUid == request.auth.uid))
+          && request.resource.data.ownerUid == resource.data.ownerUid;
+        allow delete: if isTeamLeader(teamId, request.auth.uid)
           || (isTeamMember(teamId, request.auth.uid)
               && resource.data.ownerUid == request.auth.uid);
       }
