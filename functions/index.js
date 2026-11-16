@@ -361,16 +361,24 @@ exports.confirmPortOnePayment = onCall({
     throw new HttpsError('invalid-argument', '결제 금액이 올바르지 않습니다.');
   }
 
+  const TIER_RANK = {personal: 1, leader: 2};
   const result = await db.runTransaction(async (tx) => {
     const purchaseSnap = await tx.get(purchaseRef);
     if (purchaseSnap.exists) {
       return {tier: purchaseSnap.data().tier, alreadyProcessed: true};
     }
+    // 트랜잭션 안에서 다시 조회 — 결제 시작~확인 사이에 다른 결제(예: 개인 결제가
+    // 늦게 확인되는 동안 팀장 결제가 먼저 끝난 경우)로 이미 더 높은 등급이 돼
+    // 있으면, 이 결제로 등급을 다시 낮추지 않는다. 구매 기록 자체는 남긴다.
+    const freshUserSnap = await tx.get(userRef);
+    const actualCurrentTier = freshUserSnap.exists ? (freshUserSnap.data().premiumTier || null) : null;
     tx.set(purchaseRef, {
       uid, tier, amount: expectedAmount, paymentId,
       confirmedAt: FieldValue.serverTimestamp(),
     });
-    tx.set(userRef, {premiumTier: tier}, {merge: true});
+    if ((TIER_RANK[tier] || 0) >= (TIER_RANK[actualCurrentTier] || 0)) {
+      tx.set(userRef, {premiumTier: tier}, {merge: true});
+    }
     return {tier, alreadyProcessed: false};
   });
 
