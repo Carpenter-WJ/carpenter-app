@@ -2166,7 +2166,13 @@ function renderMemberWageList() {
   document.getElementById('memberWageList').innerHTML = html;
 }
 function addGuestRow() {
-  if (!isPremiumLeader && guestUsageThisMonth >= 2) { openOv('premUpgradeOv'); return; }
+  // guestUsageThisMonth는 저장 성공 후에만 올라가는 값이라, 저장 전에 이 버튼을
+  // 여러 번 눌러서 행을 쌓으면 매번 같은(오래된) 값으로 통과돼 한도를 넘길 수
+  // 있었음 — 아직 저장 안 하고 화면에 떠 있는 직접입력 행 수까지 같이 계산.
+  if (!isPremiumLeader) {
+    const existingGuestRows = document.querySelectorAll('#memberWageList .mw-guest-row').length;
+    if (guestUsageThisMonth + existingGuestRows >= 2) { openOv('premUpgradeOv'); return; }
+  }
   const unitOpts=[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(v=>`<option value="${v}"${v===1?' selected':''}>${v}품</option>`).join('');
   const row=document.createElement('div');
   row.className='mw-row mw-guest-row';
